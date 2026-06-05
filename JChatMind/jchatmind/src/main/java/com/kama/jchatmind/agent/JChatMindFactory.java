@@ -119,15 +119,28 @@ public class JChatMindFactory {
     }
 
     private List<Message> loadMemory(String chatSessionId, String enrichedUserInput) {
-        // Memory Hub opt-in：启用时优先使用分层记忆召回，无记忆则回退到 chat_message 历史
-        if (memoryProperties.isEnabled()) {
-            List<Message> hubMemory = memoryIntegration.buildContext(chatSessionId, 0);
-            if (hubMemory != null && !hubMemory.isEmpty()) {
-                return hubMemory;
-            }
-            log.info("Memory Hub 已启用但 session={} 暂无记忆，回退到 chat_message 历史加载", chatSessionId);
-        }
+        List<Message> memory = loadChatMessageHistory(chatSessionId, enrichedUserInput);
 
+        // Memory Hub：在 chat_message 主链路之外注入 RECENT/ARCHIVE 历史摘要（保留 tool 链完整性）
+        if (memoryProperties.isEnabled()) {
+            try {
+                List<Message> supplemental = memoryIntegration.buildSupplementalContext(chatSessionId, 0);
+                if (supplemental != null && !supplemental.isEmpty()) {
+                    List<Message> merged = new ArrayList<>();
+                    merged.add(new SystemMessage("以下是与当前会话相关的历史记忆（来自 Memory Hub）："));
+                    merged.addAll(supplemental);
+                    merged.addAll(memory);
+                    memory = merged;
+                    log.debug("Memory Hub 已为 session={} 注入 {} 条补充记忆", chatSessionId, supplemental.size());
+                }
+            } catch (Exception e) {
+                log.warn("Memory Hub 补充记忆加载失败 session={}: {}", chatSessionId, e.getMessage());
+            }
+        }
+        return memory;
+    }
+
+    private List<Message> loadChatMessageHistory(String chatSessionId, String enrichedUserInput) {
         int messageLength = resolveMemoryWindow(chatSessionId, agentConfig, false);
         List<ChatMessageDTO> chatMessages = chatMessageFacadeService.getChatMessagesBySessionIdRecently(chatSessionId, messageLength);
         List<Message> memory = new ArrayList<>();

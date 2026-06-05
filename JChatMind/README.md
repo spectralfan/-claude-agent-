@@ -40,7 +40,7 @@
 | 多 Agent 对话 | 可配置模型、系统提示词、工具白名单 | 开启 |
 | ReAct 工具闭环 | `reason → act → observe`，手动 `ToolCallingManager` | 开启 |
 | 知识库 RAG | 文档分块、向量检索（pgvector） | 开启 |
-| Memory Hub | WORKING / RECENT / ARCHIVE 分层记忆 | 关闭 |
+| Memory Hub | WORKING / RECENT / ARCHIVE 分层记忆 | 开启 |
 | MCP 工具 | `mcp-proxy` + Spring AI `McpSyncClient`，按白名单注入 Agent | 可配置 |
 | AI Coding | 文件树、Diff、终端输出 SSE、栈 Profile、Skill 注入 | 开启 |
 | Orchestrator / Worker | 编排委派子任务，Worker 独立会话执行 | 开启 |
@@ -79,6 +79,36 @@ JChatMindv2/
 | LLM | DeepSeek、智谱 GLM-4 |
 | 工具 | MCP（SSE）、本地 Java 工具（文件/Maven/Coding 交付） |
 | Python | uv + pytest 脚手架 |
+
+---
+
+## Memory Hub（分层记忆）
+
+已启用 `memory.hub.enabled: true`。
+
+| 层级 | 说明 |
+|------|------|
+| WORKING | 短期，镜像 `chat_message` |
+| RECENT | 中期，高重要性记忆 |
+| ARCHIVE | 长期，摘要 + pgvector 向量检索 |
+
+**首次部署**（PostgreSQL on Docker，容器名 `postgres`）：
+
+```powershell
+# 建表（若尚未执行）
+docker cp JChatMind/jchatmind/src/main/resources/db/memory_hub.sql postgres:/tmp/
+docker exec postgres psql -U postgres -d jchatmind -f /tmp/memory_hub.sql
+
+# 可选：迁移历史 chat_message
+docker cp JChatMind/jchatmind/src/main/resources/db/memory_hub_migration.sql postgres:/tmp/
+docker exec postgres psql -U postgres -d jchatmind -f /tmp/memory_hub_migration.sql
+```
+
+连接信息（与 `application.yaml` 一致）：`localhost:5432`，用户 `postgres`，密码 `123456`，库 `jchatmind`。
+
+**Ollama**（ARCHIVE 向量化）：`ollama pull bge-m3`，默认 `http://localhost:11434`
+
+**诊断 API**：`GET /api/memory/status`、`GET /api/memory/stats/{sessionId}`
 
 ---
 

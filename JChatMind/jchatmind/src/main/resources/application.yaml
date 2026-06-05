@@ -72,9 +72,10 @@ mcp:
 
 memory:
   hub:
-    enabled: false
+    enabled: true
     embedding-model: bge-m3
     embedding-dimension: 1024
+    ollama-base-url: http://localhost:11434
     working-window-size: 20
     recent-importance-threshold: 7
     recent-max-entries: 50

@@ -38,6 +38,11 @@ public interface MemoryService {
 
     List<Message> buildContextMessages(String sessionId, int maxTokens);
 
+    /**
+     * 构建 RECENT/ARCHIVE 补充记忆（不含 WORKING），供 Agent 在 chat_message 主链路之外注入历史上下文。
+     */
+    List<Message> buildSupplementalMessages(String sessionId, int maxTokens);
+
     // --- 会话管理 ---
 
     MemorySession getOrCreateSession(String sessionId, String agentId);

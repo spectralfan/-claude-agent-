@@ -1,5 +1,6 @@
 package com.kama.jchatmind.service.impl;
 
+import com.kama.jchatmind.memory.config.MemoryProperties;
 import com.kama.jchatmind.mapper.ChunkBgeM3Mapper;
 import com.kama.jchatmind.model.entity.ChunkBgeM3;
 import com.kama.jchatmind.service.RagService;
@@ -14,14 +15,23 @@ import java.util.Map;
 @Service
 public class RagServiceImpl implements RagService {
 
+    /** bge-m3 经 Ollama 嵌入时过长文本会 500，保守截断 */
+    private static final int MAX_EMBED_CHARS = 4000;
+
     // 封装本地的模型调用
     private final WebClient webClient;
     private final ChunkBgeM3Mapper chunkBgeM3Mapper;
 
-    public RagServiceImpl(WebClient.Builder builder, ChunkBgeM3Mapper chunkBgeM3Mapper) {
-        this.webClient = builder.baseUrl("http://localhost:11434").build();
+    public RagServiceImpl(WebClient.Builder builder,
+                          ChunkBgeM3Mapper chunkBgeM3Mapper,
+                          MemoryProperties memoryProperties) {
+        String baseUrl = memoryProperties.getOllamaBaseUrl();
+        this.webClient = builder.baseUrl(baseUrl).build();
         this.chunkBgeM3Mapper = chunkBgeM3Mapper;
+        this.embeddingModel = memoryProperties.getEmbeddingModel();
     }
+
+    private final String embeddingModel;
 
     @Data
     private static class EmbeddingResponse {
@@ -32,7 +42,7 @@ public class RagServiceImpl implements RagService {
         EmbeddingResponse resp = webClient.post()
                 .uri("/api/embeddings")
                 .bodyValue(Map.of(
-                        "model", "bge-m3",
+                        "model", embeddingModel,
                         "prompt", text
                 ))
                 .retrieve()
@@ -44,6 +54,12 @@ public class RagServiceImpl implements RagService {
 
     @Override
     public float[] embed(String text) {
+        if (text == null || text.isBlank()) {
+            return new float[0];
+        }
+        if (text.length() > MAX_EMBED_CHARS) {
+            text = text.substring(0, MAX_EMBED_CHARS);
+        }
         return doEmbed(text);
     }
 

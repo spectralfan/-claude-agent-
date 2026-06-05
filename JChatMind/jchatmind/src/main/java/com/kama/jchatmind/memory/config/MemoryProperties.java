@@ -51,4 +51,7 @@ public class MemoryProperties {
 
     /** 每次轮询处理的任务数 */
     private int taskBatchSize = 5;
+
+    /** Ollama 服务地址（bge-m3 向量化，Memory Hub ARCHIVE 与知识库 RAG 共用） */
+    private String ollamaBaseUrl = "http://localhost:11434";
 }

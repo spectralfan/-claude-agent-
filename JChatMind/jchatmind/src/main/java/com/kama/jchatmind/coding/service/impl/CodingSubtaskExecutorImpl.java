@@ -7,6 +7,7 @@ import com.kama.jchatmind.coding.context.SubAgentRunContext;
 import com.kama.jchatmind.coding.model.dto.CodingSubtaskDTO;
 import com.kama.jchatmind.coding.service.CodingSubtaskExecutor;
 import com.kama.jchatmind.coding.service.CodingSubtaskService;
+import com.kama.jchatmind.memory.integration.MemoryIntegration;
 import com.kama.jchatmind.message.SseMessage;
 import com.kama.jchatmind.model.dto.ChatMessageDTO;
 import com.kama.jchatmind.realtime.RealtimeNotifier;
@@ -26,16 +27,19 @@ public class CodingSubtaskExecutorImpl implements CodingSubtaskExecutor {
     private final CodingSubtaskService codingSubtaskService;
     private final RealtimeNotifier realtimeNotifier;
     private final ChatMessageFacadeService chatMessageFacadeService;
+    private final MemoryIntegration memoryIntegration;
 
     public CodingSubtaskExecutorImpl(
             @Lazy JChatMindFactory jChatMindFactory,
             CodingSubtaskService codingSubtaskService,
             RealtimeNotifier realtimeNotifier,
-            ChatMessageFacadeService chatMessageFacadeService) {
+            ChatMessageFacadeService chatMessageFacadeService,
+            MemoryIntegration memoryIntegration) {
         this.jChatMindFactory = jChatMindFactory;
         this.codingSubtaskService = codingSubtaskService;
         this.realtimeNotifier = realtimeNotifier;
         this.chatMessageFacadeService = chatMessageFacadeService;
+        this.memoryIntegration = memoryIntegration;
     }
 
     @Override
@@ -67,6 +71,7 @@ public class CodingSubtaskExecutorImpl implements CodingSubtaskExecutor {
             codingSubtaskService.markFailed(subtask.getId(), error);
             publishEvent(parentSessionId, subtask, SseMessage.Type.CODING_SUBTASK_FAILED, null, error);
         } finally {
+            memoryIntegration.onSessionEnd(subSessionId);
             SubAgentRunContext.clear();
             CodingSessionContext.clear();
         }

@@ -19,4 +19,9 @@ public interface MemorySelector {
      * 动态调整记忆层级：将长期未访问的 RECENT 归档到 ARCHIVE。
      */
     void adjustTiers(String sessionId);
+
+    /**
+     * 仅召回 RECENT + ARCHIVE（不含 WORKING），用于向 Agent 注入历史摘要，不替代 chat_message 工具链。
+     */
+    List<MemoryEntry> selectSupplementalMemories(String sessionId, String currentQuery, int maxTokens);
 }

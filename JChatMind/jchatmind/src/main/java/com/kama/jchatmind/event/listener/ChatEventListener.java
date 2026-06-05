@@ -7,6 +7,7 @@ import com.kama.jchatmind.coding.model.entity.CodingTask;
 import com.kama.jchatmind.coding.model.enums.CodingTaskStatus;
 import com.kama.jchatmind.coding.service.CodingMessageEnricher;
 import com.kama.jchatmind.coding.service.CodingTaskService;
+import com.kama.jchatmind.memory.integration.MemoryIntegration;
 import com.kama.jchatmind.event.ChatEvent;
 import lombok.AllArgsConstructor;
 import org.springframework.context.event.EventListener;
@@ -21,6 +22,7 @@ public class ChatEventListener {
     private final JChatMindFactory jChatMindFactory;
     private final CodingTaskService codingTaskService;
     private final CodingMessageEnricher codingMessageEnricher;
+    private final MemoryIntegration memoryIntegration;
 
     @Async
     @EventListener
@@ -39,6 +41,7 @@ public class ChatEventListener {
                     event.getAgentId(), event.getSessionId(), enrichedInput);
             jChatMind.run();
         } finally {
+            memoryIntegration.onSessionEnd(event.getSessionId());
             CodingSessionContext.clear();
         }
     }

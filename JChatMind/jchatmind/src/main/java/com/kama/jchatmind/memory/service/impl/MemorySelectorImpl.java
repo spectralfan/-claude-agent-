@@ -78,6 +78,33 @@ public class MemorySelectorImpl implements MemorySelector {
         return result;
     }
 
+    @Override
+    public List<MemoryEntry> selectSupplementalMemories(String sessionId, String currentQuery, int maxTokens) {
+        if (maxTokens <= 0) {
+            maxTokens = (int) (properties.getDefaultContextWindow() * properties.getTokenBudgetRatio() * 0.3);
+        }
+        boolean wantArchive = StringUtils.hasText(currentQuery) && needArchive(currentQuery);
+        int recentBudget = (int) (maxTokens * 0.6);
+        int archiveBudget = maxTokens - recentBudget;
+
+        Map<String, MemoryEntry> selected = new LinkedHashMap<>();
+        int[] used = {0};
+
+        List<MemoryEntry> recent = recentMemoryService.topByImportance(sessionId, null, properties.getRecentMaxEntries());
+        fill(selected, recent, recentBudget, maxTokens, used);
+
+        if (wantArchive && archiveBudget > 0) {
+            List<MemoryEntry> archive = archiveMemoryService.semanticSearch(sessionId, currentQuery, 10);
+            fill(selected, archive, maxTokens, maxTokens, used);
+        }
+
+        List<MemoryEntry> result = new ArrayList<>(selected.values());
+        result.sort(Comparator.comparing(
+                MemoryEntry::getCreatedAt,
+                Comparator.nullsFirst(Comparator.naturalOrder())));
+        return result;
+    }
+
     /**
      * 在不超过 tierCap（该层累计上限）与 hardCap（总预算）的前提下，将候选填入已选集合。
      */

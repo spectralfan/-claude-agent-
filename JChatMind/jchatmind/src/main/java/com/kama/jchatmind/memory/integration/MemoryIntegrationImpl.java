@@ -1,10 +1,12 @@
 package com.kama.jchatmind.memory.integration;
 
+import com.kama.jchatmind.memory.config.MemoryProperties;
 import com.kama.jchatmind.memory.model.dto.MemorySaveDTO;
 import com.kama.jchatmind.memory.model.dto.ToolCallInfo;
 import com.kama.jchatmind.memory.model.enums.MemoryRole;
 import com.kama.jchatmind.memory.model.enums.MemoryType;
 import com.kama.jchatmind.memory.service.MemoryService;
+import com.kama.jchatmind.memory.service.MemorySelector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.Message;
@@ -23,14 +25,30 @@ public class MemoryIntegrationImpl implements MemoryIntegration {
     private static final int CONFIRMATION_IMPORTANCE = 7;
 
     private final MemoryService memoryService;
+    private final MemorySelector memorySelector;
+    private final MemoryProperties memoryProperties;
 
     @Override
     public List<Message> buildContext(String sessionId, int maxTokens) {
+        if (!memoryProperties.isEnabled()) {
+            return List.of();
+        }
         return memoryService.buildContextMessages(sessionId, maxTokens);
     }
 
     @Override
+    public List<Message> buildSupplementalContext(String sessionId, int maxTokens) {
+        if (!memoryProperties.isEnabled()) {
+            return List.of();
+        }
+        return memoryService.buildSupplementalMessages(sessionId, maxTokens);
+    }
+
+    @Override
     public void onToolExecuted(String sessionId, ToolCallInfo toolCall) {
+        if (!memoryProperties.isEnabled()) {
+            return;
+        }
         if (toolCall == null) {
             return;
         }
@@ -50,6 +68,9 @@ public class MemoryIntegrationImpl implements MemoryIntegration {
 
     @Override
     public void onUserConfirmed(String sessionId, String confirmation) {
+        if (!memoryProperties.isEnabled()) {
+            return;
+        }
         if (!StringUtils.hasText(confirmation)) {
             return;
         }
@@ -66,8 +87,16 @@ public class MemoryIntegrationImpl implements MemoryIntegration {
 
     @Override
     public void onSessionEnd(String sessionId) {
+        if (!memoryProperties.isEnabled()) {
+            return;
+        }
         log.info("会话结束，触发记忆整理 session={}", sessionId);
         memoryService.updateSessionActivity(sessionId);
+        try {
+            memorySelector.adjustTiers(sessionId);
+        } catch (Exception e) {
+            log.warn("Memory Hub 层级调整失败 session={}: {}", sessionId, e.getMessage());
+        }
         memoryService.triggerConsolidation(sessionId);
     }
 }

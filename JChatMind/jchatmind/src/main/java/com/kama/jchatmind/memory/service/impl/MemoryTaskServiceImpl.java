@@ -44,7 +44,7 @@ public class MemoryTaskServiceImpl implements MemoryTaskService {
     @Override
     @Scheduled(fixedDelayString = "${memory.hub.task-poll-interval-ms:10000}")
     public void pollPendingTasks() {
-        if (!properties.isTaskPollingEnabled()) {
+        if (!properties.isEnabled() || !properties.isTaskPollingEnabled()) {
             return;
         }
         List<MemoryTask> pending = memoryTaskMapper.selectPending(properties.getTaskBatchSize());

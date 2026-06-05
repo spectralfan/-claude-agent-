@@ -145,6 +145,16 @@ public class MemoryServiceImpl implements MemoryService {
     }
 
     @Override
+    public List<Message> buildSupplementalMessages(String sessionId, int maxTokens) {
+        int budget = maxTokens > 0
+                ? maxTokens
+                : (int) (properties.getDefaultContextWindow() * properties.getTokenBudgetRatio() * 0.3);
+        String currentQuery = latestUserContent(sessionId);
+        List<MemoryEntry> entries = memorySelector.selectSupplementalMemories(sessionId, currentQuery, budget);
+        return messageConverter.toMessages(entries);
+    }
+
+    @Override
     @Transactional
     public MemorySession getOrCreateSession(String sessionId, String agentId) {
         MemorySession existing = memorySessionMapper.selectBySessionId(sessionId);

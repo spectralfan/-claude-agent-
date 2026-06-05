@@ -118,7 +118,11 @@ public class MemoryAgent {
                 .memoryTags(List.of("summary", "consolidation"))
                 .build();
         memoryEntryMapper.insert(consolidated);
-        archiveMemoryService.generateEmbedding(consolidated);
+        try {
+            archiveMemoryService.generateEmbedding(consolidated);
+        } catch (Exception e) {
+            log.warn("整理摘要向量化失败 session={}: {}", sessionId, e.getMessage());
+        }
 
         // 2. 归档原 RECENT 条目（含各自向量化，SHA-256 去重）
         int archived = 0;
