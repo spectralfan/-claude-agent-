@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.memory.mapper.MemoryContextMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.memory.model.entity.MemoryContext">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="contextKey" column="context_key" jdbcType="VARCHAR"/>
+        <result property="contextValue" column="context_value" jdbcType="VARCHAR"/>
+        <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Select_Column_List">
+        id,
+        session_id,
+        context_key,
+        context_value,
+        metadata::text AS metadata,
+        created_at,
+        updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.memory.model.entity.MemoryContext"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO t_memory_context
+        (session_id,
+         context_key,
+         context_value,
+         metadata)
+        VALUES (#{sessionId},
+                #{contextKey},
+                #{contextValue},
+                CAST(#{metadata} AS jsonb))
+    </insert>
+
+    <select id="selectBySessionAndKey" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_memory_context
+        WHERE session_id = #{sessionId}
+          AND context_key = #{contextKey}
+    </select>
+
+    <select id="selectBySession" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_memory_context
+        WHERE session_id = #{sessionId}
+        ORDER BY context_key ASC
+    </select>
+
+    <update id="updateValue">
+        UPDATE t_memory_context
+        SET context_value = #{contextValue},
+            metadata = CAST(#{metadata} AS jsonb),
+            updated_at = NOW()
+        WHERE session_id = #{sessionId}
+          AND context_key = #{contextKey}
+    </update>
+
+    <delete id="deleteBySessionAndKey">
+        DELETE FROM t_memory_context
+        WHERE session_id = #{sessionId}
+          AND context_key = #{contextKey}
+    </delete>
+</mapper>

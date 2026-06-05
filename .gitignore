@@ -1,0 +1,31 @@
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.DS_Store
+
+# Build / deps
+**/target/
+**/node_modules/
+**/dist/
+**/build/
+**/out/production/
+cp.txt
+
+# Python / uv workspace artifacts
+**/.venv/
+**/.pytest_cache/
+**/*.egg-info/
+
+# Logs & temp
+*.log
+mcp-shell.log
+*.zip
+
+# macOS extract junk
+__MACOSX/
+
+# Local runtime data (optional)
+**/data/documents/

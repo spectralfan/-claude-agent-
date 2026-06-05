@@ -1,0 +1,16 @@
+{
+  "id": "python-pytest",
+  "language": "python",
+  "displayName": "Python + pytest (uv)",
+  "detectFiles": ["pyproject.toml", "uv.lock", "requirements.txt", "setup.py"],
+  "scaffoldTemplate": "python-pytest",
+  "skillId": "python-autonomous-dev",
+  "suggestedMcpTools": ["run_terminal_cmd", "execute_command"],
+  "verifyWorkflow": "改代码后通过 MCP 执行 uv run pytest；失败则读输出修复再测",
+  "doneCriteria": "uv run pytest exit 0",
+  "suggestedAgentTools": ["coding_file_tools", "run_terminal_cmd", "execute_command"],
+  "verifyCommands": [
+    { "label": "uv sync", "type": "shell", "command": "uv sync" },
+    { "label": "uv run pytest -q", "type": "shell", "command": "uv run pytest -q" }
+  ]
+}

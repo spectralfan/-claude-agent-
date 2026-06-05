@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.mcp.mapper.McpToolCallMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.mcp.model.entity.McpToolCall">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="serverId" column="server_id" jdbcType="VARCHAR"/>
+        <result property="toolName" column="tool_name" jdbcType="VARCHAR"/>
+        <result property="arguments" column="arguments" jdbcType="VARCHAR"/>
+        <result property="result" column="result" jdbcType="VARCHAR"/>
+        <result property="errorMessage" column="error_message" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="durationMs" column="duration_ms" jdbcType="INTEGER"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="agentId" column="agent_id" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Select_Column_List">
+        id,
+        server_id,
+        tool_name,
+        arguments::text AS arguments,
+        result::text AS result,
+        error_message,
+        status,
+        duration_ms,
+        session_id,
+        agent_id,
+        created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.mcp.model.entity.McpToolCall"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO t_mcp_tool_call
+        (server_id,
+         tool_name,
+         arguments,
+         result,
+         error_message,
+         status,
+         duration_ms,
+         session_id,
+         agent_id)
+        VALUES (#{serverId},
+                #{toolName},
+                CAST(#{arguments} AS jsonb),
+                CAST(#{result} AS jsonb),
+                #{errorMessage},
+                #{status},
+                #{durationMs},
+                #{sessionId},
+                #{agentId})
+    </insert>
+
+    <select id="selectHistory" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_mcp_tool_call
+        <where>
+            <if test="serverId != null">AND server_id = #{serverId}</if>
+            <if test="toolName != null">AND tool_name = #{toolName}</if>
+            <if test="since != null">AND created_at &gt;= #{since}</if>
+        </where>
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="usageStats" resultType="java.util.Map">
+        SELECT tool_name AS tool_name, COUNT(*) AS cnt
+        FROM t_mcp_tool_call
+        <where>
+            <if test="serverId != null">AND server_id = #{serverId}</if>
+        </where>
+        GROUP BY tool_name
+        ORDER BY cnt DESC
+    </select>
+</mapper>

@@ -1,0 +1,148 @@
+spring:
+  application:
+    name: jchatmind
+  main:
+    allow-circular-references: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/jchatmind
+    username: postgres
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: 1448280058@qq.com
+    password: orbyrmwrcxwughec # 邮箱授权码
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+  ai:
+    deepseek:
+      api-key: ${OPEN_AI_API_KEY}
+      base-url: https://api.deepseek.com
+      chat:
+        options:
+          model: deepseek-chat
+    zhipuai:
+      api-key: ${ZHIPU_API_KEY}
+      base-url: https://open.bigmodel.cn/api/paas
+      chat:
+        options:
+          model: glm-4.6
+    # Spring AI 官方 MCP 客户端：连接 mcp-proxy-server 聚合网关。
+    # 默认 enabled=false，不会在启动时尝试连接；联调时置 true 并把 url 指向你的 proxy。
+    mcp:
+      client:
+        enabled: true
+        name: jchatmind-mcp-client
+        version: 1.0.0
+        type: SYNC
+        request-timeout: 30s
+        # 工具回调集成由本项目 mcp 模块手动接管，关闭自动注入到所有 ChatClient
+        toolcallback:
+          enabled: false
+        sse:
+          connections:
+            proxy:
+              url: http://localhost:3000
+              # 若 proxy 的 SSE 端点不是默认 /sse，按需指定，例如：
+              # sse-endpoint: /sse
+mybatis:
+  type-aliases-package: com.kama.jchatmind.model.entity
+  mapper-locations: classpath:mapper/*.xml
+  type-handlers-package: com.kama.jchatmind.typehandler
+
+document:
+  storage:
+    base-path: ./data/documents
+
+# 本项目 MCP 集成模块开关（与 spring.ai.mcp.client 区分：后者管连接，这里管是否注入 Agent 与埋点）
+mcp:
+  # 是否把发现到的 MCP 工具按 allowedTools 白名单注入 Agent；关闭时零行为变化
+  enabled: true
+  # 是否异步记录工具调用到 t_mcp_tool_call
+  record-calls: true
+  # 匹配 allowedTools 时，是否对 SDK 可能添加的连接名前缀做去前缀兜底匹配
+  tool-name-prefix-strip: true
+
+memory:
+  hub:
+    enabled: false
+    embedding-model: bge-m3
+    embedding-dimension: 1024
+    working-window-size: 20
+    recent-importance-threshold: 7
+    recent-max-entries: 50
+    recent-idle-minutes: 60
+    token-budget-ratio: 0.7
+    default-context-window: 8192
+    consolidation-model: deepseek-chat
+    task-polling-enabled: true
+    task-poll-interval-ms: 10000
+    task-batch-size: 5
+
+coding:
+  workspace:
+    root: ./workspace
+    # 网页下拉可选的本地 IDEA/Maven 工程（path 指向含 pom.xml 的工程根）
+    allowed-roots:
+      - name: JChatMind 后端
+        path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind
+      - name: Snake E2E 测试
+        path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/workspace/snake-e2e
+      - name: Python uv E2E
+        path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/workspace/python-uv-e2e
+      - name: 跳跳乐 MCP E2E
+        path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/workspace/jump-game-e2e
+      # - name: 我的业务项目
+      #   path: D:/projects/order-service
+  agent:
+    max-loop-steps: 35
+    memory-window: 80
+    tool-aware-memory: true
+  approval:
+    enabled: true
+    default-mode: development
+  skills:
+    enabled: true
+  project-rules:
+    enabled: true
+    files:
+      - JCHATMIND.md
+      - CLAUDE.md
+      - AGENTS.md
+    max-chars: 2000
+  maven:
+    timeout-seconds: 300
+    output-max-chars: 12000
+  agent-preset:
+    enabled: true
+  orchestrator-preset:
+    enabled: true
+  subagent:
+    enabled: true
+    worker-agent-name: Claude Code Coding Agent
+    max-loop-steps: 35
+  delivery:
+    require-verification: false
+
+# 实时推送：local=直推 SSE；rocketmq=写入 MQ 后由 ChatEventMqConsumer 桥接 SSE（适合多实例）
+realtime:
+  messaging:
+    mode: local
+    rocketmq:
+      name-server: 127.0.0.1:9876
+      topic: jchatmind-chat-events
+      producer-group: jchatmind-chat-producer
+      consumer-group: jchatmind-sse-bridge
+
+# rocketmq 模式需同时配置（realtime.messaging.mode=rocketmq 时生效）
+rocketmq:
+  name-server: ${realtime.messaging.rocketmq.name-server}
+  producer:
+    group: ${realtime.messaging.rocketmq.producer-group}

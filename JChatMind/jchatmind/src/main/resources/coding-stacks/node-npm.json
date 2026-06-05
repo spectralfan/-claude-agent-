@@ -1,0 +1,15 @@
+{
+  "id": "node-npm",
+  "language": "javascript",
+  "displayName": "Node.js + npm",
+  "detectFiles": ["package.json"],
+  "scaffoldTemplate": "node-npm",
+  "skillId": "node-autonomous-dev",
+  "suggestedMcpTools": ["run_terminal_cmd", "bash"],
+  "verifyWorkflow": "改代码后通过 MCP 执行 npm test；失败则读输出修复再测",
+  "doneCriteria": "npm test exit 0",
+  "suggestedAgentTools": ["coding_file_tools", "run_terminal_cmd"],
+  "verifyCommands": [
+    { "label": "npm test", "type": "shell", "command": "npm test" }
+  ]
+}

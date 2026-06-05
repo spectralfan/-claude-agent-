@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.coding.mapper.CodingTaskMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.coding.model.entity.CodingTask">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="agentId" column="agent_id" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="workspacePath" column="workspace_path" jdbcType="VARCHAR"/>
+        <result property="workspaceRoot" column="workspace_root" jdbcType="VARCHAR"/>
+        <result property="startedAt" column="started_at" jdbcType="TIMESTAMP"/>
+        <result property="finishedAt" column="finished_at" jdbcType="TIMESTAMP"/>
+        <result property="command" column="command" jdbcType="VARCHAR"/>
+        <result property="resultSummary" column="result_summary" jdbcType="VARCHAR"/>
+        <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="pendingAction" column="pending_action" jdbcType="VARCHAR"/>
+        <result property="pendingPayload" column="pending_payload" jdbcType="VARCHAR"/>
+        <result property="approvalReason" column="approval_reason" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <sql id="Select_Column_List">
+        id,
+        session_id,
+        agent_id,
+        status,
+        workspace_path,
+        workspace_root,
+        started_at,
+        finished_at,
+        command,
+        result_summary,
+        metadata::text AS metadata,
+        pending_action,
+        pending_payload::text AS pending_payload,
+        approval_reason
+    </sql>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.coding.model.entity.CodingTask"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO t_coding_task
+        (session_id,
+         agent_id,
+         status,
+         workspace_path,
+         workspace_root,
+         command,
+         result_summary,
+         metadata,
+         pending_action,
+         pending_payload,
+         approval_reason)
+        VALUES (#{sessionId},
+                #{agentId},
+                COALESCE(#{status}, 'pending'),
+                #{workspacePath},
+                #{workspaceRoot},
+                #{command},
+                #{resultSummary},
+                CAST(#{metadata} AS jsonb),
+                #{pendingAction},
+                CAST(#{pendingPayload} AS jsonb),
+                #{approvalReason})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_coding_task
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <select id="selectActiveBySession" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_coding_task
+        WHERE session_id = #{sessionId}
+          AND status IN ('pending', 'running', 'waiting_approval')
+        ORDER BY started_at DESC
+        LIMIT 1
+    </select>
+
+    <update id="updateStatus">
+        UPDATE t_coding_task
+        <set>
+            <if test="status != null">status = #{status},</if>
+            <if test="finishedAt != null">finished_at = #{finishedAt},</if>
+            <if test="resultSummary != null">result_summary = #{resultSummary},</if>
+            <if test="approvalReason != null">approval_reason = #{approvalReason},</if>
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <update id="updateCommand">
+        UPDATE t_coding_task
+        <set>
+            <if test="command != null">command = #{command},</if>
+            <if test="pendingAction != null">pending_action = #{pendingAction},</if>
+            <if test="pendingPayload != null">pending_payload = CAST(#{pendingPayload} AS jsonb),</if>
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <update id="clearPending">
+        UPDATE t_coding_task
+        SET pending_action = NULL,
+            pending_payload = NULL
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <update id="recordExecutionResult">
+        UPDATE t_coding_task
+        SET status = 'running',
+            command = #{command},
+            result_summary = #{resultSummary}
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+</mapper>

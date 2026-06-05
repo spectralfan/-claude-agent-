@@ -1,0 +1,107 @@
+package com.kama.jchatmind.agent.tools.coding;
+
+import com.kama.jchatmind.agent.tools.Tool;
+import com.kama.jchatmind.agent.tools.ToolType;
+import com.kama.jchatmind.coding.config.CodingSubagentProperties;
+import com.kama.jchatmind.coding.context.CodingSessionContext;
+import com.kama.jchatmind.coding.context.SubAgentRunContext;
+import com.kama.jchatmind.coding.model.dto.CodingAgentPresetDTO;
+import com.kama.jchatmind.coding.model.dto.CodingSubtaskDTO;
+import com.kama.jchatmind.coding.model.entity.CodingTask;
+import com.kama.jchatmind.coding.service.CodingAgentPresetService;
+import com.kama.jchatmind.coding.service.CodingSubtaskExecutor;
+import com.kama.jchatmind.coding.service.CodingSubtaskService;
+import com.kama.jchatmind.coding.service.CodingTaskService;
+import com.kama.jchatmind.mapper.AgentMapper;
+import com.kama.jchatmind.model.entity.Agent;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class DelegateCodingTaskTool implements Tool {
+
+    private final CodingSubagentProperties subagentProperties;
+    private final CodingSubtaskService codingSubtaskService;
+    private final CodingSubtaskExecutor codingSubtaskExecutor;
+    private final CodingTaskService codingTaskService;
+    private final CodingAgentPresetService codingAgentPresetService;
+    private final AgentMapper agentMapper;
+
+    @Override
+    public String getName() {
+        return "delegate_coding_task";
+    }
+
+    @Override
+    public String getDescription() {
+        return "将 Coding 子目标异步委派给 Worker Agent，立即返回 subTaskId";
+    }
+
+    @Override
+    public ToolType getType() {
+        return ToolType.OPTIONAL;
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(
+            name = "delegate_coding_task",
+            description = "将具体开发子任务委派给后台 Worker Agent 异步执行。"
+                    + "goal 须为可独立完成的子目标（含验收标准）。"
+                    + "返回 subTaskId 后请用 get_coding_subtask_status 轮询直至 COMPLETED/FAILED。"
+    )
+    public String delegateCodingTask(String goal, String title) {
+        if (!subagentProperties.isEnabled()) {
+            return "错误：子 Agent 委派功能未启用";
+        }
+        if (SubAgentRunContext.get() != null) {
+            return "错误：子 Agent 不能继续委派子任务";
+        }
+        CodingSessionContext.Context ctx = CodingSessionContext.get();
+        if (ctx == null) {
+            return "错误：无 Coding 会话上下文";
+        }
+        CodingTask task = codingTaskService.getActiveTask(ctx.sessionId());
+        if (task == null) {
+            return "错误：当前会话无活动 Coding 任务";
+        }
+        if (goal == null || goal.isBlank()) {
+            return "错误：goal 不能为空";
+        }
+        String workerAgentId = resolveWorkerAgentId();
+        if (workerAgentId == null) {
+            return "错误：未找到 Worker Agent（" + subagentProperties.getWorkerAgentName() + "）";
+        }
+
+        CodingSubtaskDTO subtask = codingSubtaskService.create(
+                ctx.sessionId(),
+                task.getId(),
+                workerAgentId,
+                title,
+                goal.trim()
+        );
+        codingSubtaskExecutor.execute(subtask);
+        return "子任务已异步启动。"
+                + " subTaskId=" + subtask.getId()
+                + " status=RUNNING"
+                + " title=" + subtask.getTitle()
+                + "。请使用 get_coding_subtask_status 查询进度。";
+    }
+
+    private String resolveWorkerAgentId() {
+        return codingAgentPresetService.findPreset()
+                .map(CodingAgentPresetDTO::getAgentId)
+                .orElseGet(() -> {
+                    Agent agent = findAgentByName(subagentProperties.getWorkerAgentName());
+                    return agent != null ? agent.getId() : null;
+                });
+    }
+
+    private Agent findAgentByName(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        return agentMapper.selectByName(name);
+    }
+}

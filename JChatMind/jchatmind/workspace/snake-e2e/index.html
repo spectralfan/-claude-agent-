@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>贪吃蛇 - Snake Game</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="game-wrapper">
+    <!-- 头部：标题 + 分数 + 重启按钮 -->
+    <div class="game-header">
+      <h1 class="game-title">🐍 贪吃蛇</h1>
+      <div class="game-stats">
+        <div class="score-box">
+          <div class="score-label">得分</div>
+          <div class="score-value" id="score">0</div>
+        </div>
+        <div class="score-box">
+          <div class="score-label">最高分</div>
+          <div class="score-value" id="highScore">0</div>
+        </div>
+        <button id="restartBtn">↻ 重新开始</button>
+      </div>
+    </div>
+
+    <!-- 画布容器 + 结束覆盖层 -->
+    <div class="canvas-container">
+      <canvas id="gameCanvas"></canvas>
+      <!-- 游戏结束弹窗 -->
+      <div class="overlay" id="gameOverOverlay">
+        <div class="overlay-title">Game Over</div>
+        <div class="overlay-score" id="finalScore">0</div>
+        <div class="overlay-sub">得分</div>
+        <button class="overlay-btn" id="overlayRestartBtn">🔄 再来一局</button>
+      </div>
+    </div>
+
+    <div class="game-footer">
+      ↑ ↓ ← → 方向键控制 &nbsp;·&nbsp; 按按钮或点击覆盖层重新开始
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
