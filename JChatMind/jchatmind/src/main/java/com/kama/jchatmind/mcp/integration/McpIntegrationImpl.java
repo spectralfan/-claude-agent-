@@ -1,6 +1,6 @@
 package com.kama.jchatmind.mcp.integration;
 
-import com.kama.jchatmind.mcp.bridge.AliasedToolCallback;
+import com.kama.jchatmind.mcp.bridge.McpToolAliasRegistry;
 import com.kama.jchatmind.mcp.bridge.McpToolBridge;
 import com.kama.jchatmind.mcp.config.McpProperties;
 import com.kama.jchatmind.mcp.mapper.McpToolCallMapper;
@@ -30,18 +30,8 @@ public class McpIntegrationImpl implements McpIntegration {
     private final McpProperties properties;
     private final McpToolCallMapper callMapper;
 
-    private static final Map<String, List<String>> MCP_TERMINAL_ALIASES = Map.of(
-            "shell_exec", List.of("run_terminal_cmd", "bash", "shell"),
-            "shell_execute", List.of("run_terminal_cmd", "bash", "shell"),
-            "execute_command", List.of("run_terminal_cmd", "bash", "shell")
-    );
-
-    private static final Set<String> TERMINAL_ALLOW_NAMES = Set.of(
-            "run_terminal_cmd", "bash", "shell", "shell_exec", "shell_execute", "execute_command"
-    );
-
     public static boolean isTerminalToolName(String name) {
-        return name != null && TERMINAL_ALLOW_NAMES.contains(name);
+        return McpToolAliasRegistry.isTerminalToolName(name);
     }
 
     @Override
@@ -50,7 +40,7 @@ public class McpIntegrationImpl implements McpIntegration {
             return List.of();
         }
         Set<String> allowed = new HashSet<>(allowedToolNames);
-        boolean wantsTerminal = allowed.stream().anyMatch(TERMINAL_ALLOW_NAMES::contains);
+        boolean wantsTerminal = allowed.stream().anyMatch(McpToolAliasRegistry::isTerminalToolName);
 
         List<ToolCallback> result = new ArrayList<>();
         Set<String> registeredNames = new HashSet<>();
@@ -62,43 +52,25 @@ public class McpIntegrationImpl implements McpIntegration {
                 }
             }
         }
-        for (ToolCallback cb : new ArrayList<>(result)) {
-            List<String> aliases = resolveTerminalAliases(cb.getToolDefinition().name());
-            if (aliases == null) {
-                continue;
-            }
-            for (String alias : aliases) {
-                if (!allowed.contains(alias) || registeredNames.contains(alias)) {
-                    continue;
-                }
-                result.add(new AliasedToolCallback(alias, cb));
-                registeredNames.add(alias);
+        if (wantsTerminal && result.stream().noneMatch(cb -> isShellMcpTool(cb.getToolDefinition().name()))) {
+            log.warn("Agent 白名单含终端工具，但当前未发现 MCP shell 工具（请检查 mcp-proxy :3000 与 SSE 连接）");
+        }
+        return result;
+    }
+
+    @Override
+    public List<ToolCallback> getShellToolCallbacks() {
+        List<ToolCallback> result = new ArrayList<>();
+        for (ToolCallback cb : bridge.getAllToolCallbacks()) {
+            if (isShellMcpTool(cb.getToolDefinition().name())) {
+                result.add(cb);
             }
         }
         return result;
     }
 
-    private List<String> resolveTerminalAliases(String canonical) {
-        if (MCP_TERMINAL_ALIASES.containsKey(canonical)) {
-            return MCP_TERMINAL_ALIASES.get(canonical);
-        }
-        for (Map.Entry<String, List<String>> entry : MCP_TERMINAL_ALIASES.entrySet()) {
-            String key = entry.getKey();
-            if (canonical.endsWith("_" + key) || canonical.endsWith(key)) {
-                return entry.getValue();
-            }
-        }
-        return null;
-    }
-
     private boolean isShellMcpTool(String name) {
-        if (name == null) {
-            return false;
-        }
-        String lower = name.toLowerCase();
-        return lower.contains("shell_exec") || lower.endsWith("_shell_execute")
-                || "shell_execute".equals(lower)
-                || lower.contains("execute_command") || "execute_command".equals(lower);
+        return McpToolAliasRegistry.resolveCanonicalName(name) != null;
     }
 
     /**

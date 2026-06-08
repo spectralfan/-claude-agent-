@@ -22,5 +22,9 @@ public class ChatSessionDTO {
 
     @Data
     public static class MetaData {
+        private String workspaceRoot;
+        private String workspacePath;
+        private String approvalMode;
+        private Boolean scaffoldOnCreate;
     }
 }

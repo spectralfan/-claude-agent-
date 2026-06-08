@@ -6,6 +6,7 @@ import com.kama.jchatmind.coding.context.CodingSessionContext;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
 import com.kama.jchatmind.coding.model.enums.CodingTaskStatus;
 import com.kama.jchatmind.coding.service.CodingMessageEnricher;
+import com.kama.jchatmind.coding.service.CodingTaskAutoProvisioner;
 import com.kama.jchatmind.coding.service.CodingTaskService;
 import com.kama.jchatmind.memory.integration.MemoryIntegration;
 import com.kama.jchatmind.event.ChatEvent;
@@ -21,6 +22,7 @@ public class ChatEventListener {
 
     private final JChatMindFactory jChatMindFactory;
     private final CodingTaskService codingTaskService;
+    private final CodingTaskAutoProvisioner codingTaskAutoProvisioner;
     private final CodingMessageEnricher codingMessageEnricher;
     private final MemoryIntegration memoryIntegration;
 
@@ -29,9 +31,13 @@ public class ChatEventListener {
     public void handle(ChatEvent event) {
         CodingSessionContext.set(event.getSessionId(), event.getAgentId());
         try {
-            CodingTask active = codingTaskService.getActiveTask(event.getSessionId());
-            if (active != null && CodingTaskStatus.PENDING.getCode().equals(active.getStatus())) {
-                codingTaskService.markRunning(active.getId());
+            CodingTask active = codingTaskAutoProvisioner.ensureActiveTask(
+                    event.getSessionId(), event.getAgentId());
+            if (active != null) {
+                codingTaskService.applyDetectedStackIfAbsent(active);
+                if (CodingTaskStatus.PENDING.getCode().equals(active.getStatus())) {
+                    codingTaskService.markRunning(active.getId());
+                }
             }
             String enrichedInput = event.getUserInput();
             if (active != null && StringUtils.hasText(enrichedInput)) {

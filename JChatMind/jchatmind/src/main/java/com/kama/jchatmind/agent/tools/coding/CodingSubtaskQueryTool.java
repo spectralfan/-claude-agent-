@@ -5,6 +5,7 @@ import com.kama.jchatmind.agent.tools.Tool;
 import com.kama.jchatmind.agent.tools.ToolType;
 import com.kama.jchatmind.coding.context.CodingSessionContext;
 import com.kama.jchatmind.coding.model.dto.CodingSubtaskDTO;
+import com.kama.jchatmind.coding.model.enums.CodingSubtaskStatus;
 import com.kama.jchatmind.coding.service.CodingSubtaskService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -96,7 +97,11 @@ public class CodingSubtaskQueryTool implements Tool {
             map.put("finishedAt", dto.getFinishedAt().toString());
         }
         try {
-            return objectMapper.writeValueAsString(map);
+            String json = objectMapper.writeValueAsString(map);
+            if (CodingSubtaskStatus.FAILED.getCode().equals(dto.getStatus())) {
+                return json + "\n提示：子任务失败。请分析 errorMessage 并修正 goal 后重新调用 delegate_coding_task；编排 Agent 不得自行改代码或执行命令。";
+            }
+            return json;
         } catch (Exception e) {
             return "subTaskId=" + dto.getId() + " status=" + dto.getStatus();
         }

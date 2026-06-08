@@ -34,4 +34,6 @@ public interface CodingTaskMapper {
     int recordExecutionResult(@Param("id") String id,
                               @Param("command") String command,
                               @Param("resultSummary") String resultSummary);
+
+    int updateMetadata(@Param("id") String id, @Param("metadata") String metadata);
 }

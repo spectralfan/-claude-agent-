@@ -15,5 +15,9 @@ if (-not (Test-Path "node_modules")) {
     npm install --silent
 }
 Pop-Location
-Write-Host "Starting mcp-proxy on :3000 with jchatmind-shell-mcp"
+$env:JCHATMIND_MCP_PLATFORM = "windows"
+$env:JCHATMIND_MCP_EXECUTOR = "powershell"
+$env:JCHATMIND_PREVIEW_PORT = "5500"
+$env:JCHATMIND_RESERVED_PORTS = "8080,3000,5173"
+Write-Host "Starting mcp-proxy on :3000 with jchatmind-shell-mcp (platform=windows, executor=powershell)"
 npx -y mcp-proxy --port 3000 --server sse -- node $server

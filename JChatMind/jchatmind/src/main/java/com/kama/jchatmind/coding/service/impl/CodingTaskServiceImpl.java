@@ -15,11 +15,14 @@ import com.kama.jchatmind.coding.service.CodingWorkspaceService;
 import com.kama.jchatmind.coding.service.WorkspaceDetectService;
 import com.kama.jchatmind.coding.service.WorkspaceScaffoldService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CodingTaskServiceImpl implements CodingTaskService {
@@ -41,8 +44,8 @@ public class CodingTaskServiceImpl implements CodingTaskService {
         String language = null;
         String skillId = request.getSkillId();
 
-        if (Boolean.TRUE.equals(request.getAutoDetectStack())
-                && (stackId == null || stackId.isBlank())) {
+        boolean autoDetect = request.getAutoDetectStack() == null || Boolean.TRUE.equals(request.getAutoDetectStack());
+        if (autoDetect && (stackId == null || stackId.isBlank())) {
             WorkspaceDetectResultDTO detected = workspaceDetectService.detect(
                     request.getWorkspaceRoot(), request.getWorkspacePath());
             if (detected.getStackId() != null) {
@@ -148,6 +151,36 @@ public class CodingTaskServiceImpl implements CodingTaskService {
     @Override
     public CodingTask getActiveTask(String sessionId) {
         return codingTaskMapper.selectActiveBySession(sessionId);
+    }
+
+    @Override
+    public void applyDetectedStackIfAbsent(CodingTask task) {
+        if (task == null || task.getId() == null) {
+            return;
+        }
+        CodingTaskMetadata metadata = CodingTaskMetadata.fromJson(task.getMetadata());
+        if (StringUtils.hasText(metadata.getStackId())) {
+            return;
+        }
+        WorkspaceDetectResultDTO detected = workspaceDetectService.detect(
+                task.getWorkspaceRoot(), task.getWorkspacePath());
+        if (detected.getStackId() == null || detected.getStackId().isBlank()) {
+            return;
+        }
+        String stackId = detected.getStackId();
+        CodingStackDTO stack = codingStackService.findById(stackId).orElse(null);
+        metadata.setStackId(stackId);
+        if (detected.getLanguage() != null) {
+            metadata.setLanguage(detected.getLanguage());
+        } else if (stack != null) {
+            metadata.setLanguage(stack.getLanguage());
+        }
+        if (!StringUtils.hasText(metadata.getSkillId()) && stack != null && StringUtils.hasText(stack.getSkillId())) {
+            metadata.setSkillId(stack.getSkillId());
+        }
+        codingTaskMapper.updateMetadata(task.getId(), metadata.toJson());
+        task.setMetadata(metadata.toJson());
+        log.info("Coding 任务 {} 已自动识别技术栈: {}", task.getId(), stackId);
     }
 
     @Override

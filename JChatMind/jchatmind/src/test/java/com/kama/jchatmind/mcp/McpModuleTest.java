@@ -1,6 +1,7 @@
 package com.kama.jchatmind.mcp;
 
 import com.kama.jchatmind.mcp.bridge.McpCallRecorder;
+import com.kama.jchatmind.mcp.bridge.McpToolAliasRegistry;
 import com.kama.jchatmind.mcp.bridge.McpToolBridge;
 import com.kama.jchatmind.mcp.bridge.RecordingToolCallback;
 import com.kama.jchatmind.mcp.config.McpProperties;
@@ -80,7 +81,7 @@ class McpModuleTest {
     }
 
     @Test
-    void getToolsForAgent_shellExec_addsRunTerminalCmdAlias() {
+    void getToolsForAgent_shellExec_returnsCanonicalTool_only() {
         McpToolBridge bridge = mock(McpToolBridge.class);
         ToolCallback shellExec = mockTool("shell_exec");
         when(bridge.getAllToolCallbacks()).thenReturn(List.of(shellExec));
@@ -90,23 +91,25 @@ class McpModuleTest {
         List<ToolCallback> picked = integration.getToolsForAgent(
                 List.of("shell_exec", "run_terminal_cmd", "coding_file_tools"));
 
-        assertEquals(2, picked.size());
-        assertTrue(picked.stream().anyMatch(t -> "run_terminal_cmd".equals(t.getToolDefinition().name())));
+        assertEquals(1, picked.size());
+        assertEquals("shell_exec", picked.get(0).getToolDefinition().name());
+        List<ToolCallback> expanded = McpToolAliasRegistry.expandAliases(picked);
+        assertTrue(expanded.stream().anyMatch(t -> "run_terminal_cmd".equals(t.getToolDefinition().name())));
     }
 
     @Test
-    void getToolsForAgent_executeCommand_addsRunTerminalCmdAlias() {
+    void getShellToolCallbacks_returnsAllShellTools() {
         McpToolBridge bridge = mock(McpToolBridge.class);
         ToolCallback executeCommand = mockTool("execute_command");
-        when(bridge.getAllToolCallbacks()).thenReturn(List.of(executeCommand));
+        ToolCallback other = mockTool("github_create_issue");
+        when(bridge.getAllToolCallbacks()).thenReturn(List.of(executeCommand, other));
         McpIntegrationImpl integration =
                 new McpIntegrationImpl(bridge, new McpProperties(), mock(McpToolCallMapper.class));
 
-        List<ToolCallback> picked = integration.getToolsForAgent(
-                List.of("execute_command", "run_terminal_cmd"));
+        List<ToolCallback> shells = integration.getShellToolCallbacks();
 
-        assertEquals(2, picked.size());
-        assertTrue(picked.stream().anyMatch(t -> "run_terminal_cmd".equals(t.getToolDefinition().name())));
+        assertEquals(1, shells.size());
+        assertEquals("execute_command", shells.get(0).getToolDefinition().name());
     }
 
     @Test

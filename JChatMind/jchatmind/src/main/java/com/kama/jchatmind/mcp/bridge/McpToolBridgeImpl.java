@@ -26,16 +26,22 @@ public class McpToolBridgeImpl implements McpToolBridge {
     private final McpProperties properties;
     private final McpCallRecorder recorder;
     private final CodingMcpOutputBridge codingMcpOutputBridge;
+    private final McpShellArgumentEnricher shellArgumentEnricher;
+    private final McpShellCommandPolicy shellCommandPolicy;
 
     @Autowired
     public McpToolBridgeImpl(List<McpSyncClient> mcpSyncClients,
                              McpProperties properties,
                              McpCallRecorder recorder,
-                             CodingMcpOutputBridge codingMcpOutputBridge) {
+                             CodingMcpOutputBridge codingMcpOutputBridge,
+                             McpShellArgumentEnricher shellArgumentEnricher,
+                             McpShellCommandPolicy shellCommandPolicy) {
         this.mcpSyncClients = mcpSyncClients != null ? mcpSyncClients : List.of();
         this.properties = properties;
         this.recorder = recorder;
         this.codingMcpOutputBridge = codingMcpOutputBridge;
+        this.shellArgumentEnricher = shellArgumentEnricher;
+        this.shellCommandPolicy = shellCommandPolicy;
     }
 
     @Override
@@ -55,7 +61,8 @@ public class McpToolBridgeImpl implements McpToolBridge {
                                 .toList());
                 for (ToolCallback cb : callbacks) {
                     result.add(new RecordingToolCallback(
-                            cb, serverId, recorder, properties.isRecordCalls(), codingMcpOutputBridge));
+                            cb, serverId, recorder, properties.isRecordCalls(),
+                            codingMcpOutputBridge, shellArgumentEnricher, shellCommandPolicy));
                 }
             } catch (Exception e) {
                 log.warn("从 MCP client[{}] 获取工具失败，已跳过: {}", serverId, e.getMessage(), e);

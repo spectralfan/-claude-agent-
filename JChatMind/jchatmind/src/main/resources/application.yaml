@@ -34,8 +34,9 @@ spring:
       chat:
         options:
           model: glm-4.6
-    # Spring AI 官方 MCP 客户端：连接 mcp-proxy-server 聚合网关。
-    # 默认 enabled=false，不会在启动时尝试连接；联调时置 true 并把 url 指向你的 proxy。
+    # Spring AI 官方 MCP 客户端。
+    # 当前默认：SSE 连接本机 mcp-proxy（见 mcp.proxy.auto-start），由 jchatmind-shell-mcp 在 Windows 上执行命令。
+    # Windows 注意：若改用 STDIO 直连 MCP Server，npx/node 必须用 cmd.exe /c 包装（见官方文档与 classpath:mcp/mcp-servers-windows.json）。
     mcp:
       client:
         enabled: true
@@ -52,6 +53,21 @@ spring:
               url: http://localhost:3000
               # 若 proxy 的 SSE 端点不是默认 /sse，按需指定，例如：
               # sse-endpoint: /sse
+        # ── 可选：不用 SSE proxy，改为 STDIO 直连 shell（二选一，勿与 sse 同时启用同一 server）
+        # stdio:
+        #   servers-configuration: classpath:mcp/mcp-servers-windows.json
+        # 或手写 Windows 包装（Spring AI 官方推荐）：
+        # stdio:
+        #   connections:
+        #     jchatmind-shell:
+        #       command: cmd.exe
+        #       args:
+        #         - /c
+        #         - node
+        #         - Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/scripts/mcp/jchatmind-shell-mcp.mjs
+        #       env:
+        #         JCHATMIND_MCP_PLATFORM: windows
+        #         JCHATMIND_MCP_EXECUTOR: powershell
 mybatis:
   type-aliases-package: com.kama.jchatmind.model.entity
   mapper-locations: classpath:mapper/*.xml
@@ -69,10 +85,32 @@ mcp:
   record-calls: true
   # 匹配 allowedTools 时，是否对 SDK 可能添加的连接名前缀做去前缀兜底匹配
   tool-name-prefix-strip: true
+  # MCP 命令执行平台（传给 jchatmind-shell-mcp / command-runner，避免 Windows 上跑 Linux 命令）
+  shell:
+    # auto | windows | posix
+    platform: auto
+    # auto | powershell | cmd | sh（Windows 开发机推荐 auto→powershell，不要用 cmd）
+    executor: auto
+    # Java 侧拦截 node -e / http-server / 8080 等高危 MCP 命令，引导 coding_verify_tools
+    policy-enabled: true
+  # 后端启动时自动拉起 mcp-proxy（端口已占用则跳过；勿与手动 start-mcp-proxy.ps1 重复开）
+  proxy:
+    auto-start: true
+    port: 3000
+    # 建议用绝对路径，避免 IDE/mvn 的 user.dir 不一致导致找不到脚本
+    scripts-dir: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/scripts/mcp
+    startup-wait-ms: 15000
+    # 关后端时停止本进程拉起的 mcp-proxy（外部 start-mcp-proxy.ps1 不会被强杀端口）
+    # DevTools 开发期建议 spring.profiles.active=dev（见 application-dev.yaml）
+    stop-on-shutdown: true
+    # 杀 proxy 前等待 SSE 断开，减轻关后端时的 ConnectException 日志
+    sse-drain-ms: 1200
 
 memory:
   hub:
     enabled: true
+    # Coding 会话已有大窗口 chat_message，跳过 RECENT/ARCHIVE 向量注入以省 token/Ollama
+    supplemental-enabled: false
     embedding-model: bge-m3
     embedding-dimension: 1024
     ollama-base-url: http://localhost:11434
@@ -90,8 +128,12 @@ memory:
 coding:
   workspace:
     root: ./workspace
+    # 工作区 HTML 预览端口（勿用 8080：已被本 Spring Boot 后端占用）
+    preview-port: 5500
     # 网页下拉可选的本地 IDEA/Maven 工程（path 指向含 pom.xml 的工程根）
     allowed-roots:
+      - name: 项目根 Workspace
+        path: Z:/JAVA_workshop/JChatMindv2/workspace
       - name: JChatMind 后端
         path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind
       - name: Snake E2E 测试
@@ -103,7 +145,7 @@ coding:
       # - name: 我的业务项目
       #   path: D:/projects/order-service
   agent:
-    max-loop-steps: 35
+    max-loop-steps: 100
     memory-window: 80
     tool-aware-memory: true
   approval:
@@ -129,6 +171,9 @@ coding:
     enabled: true
     worker-agent-name: Claude Code Coding Agent
     max-loop-steps: 35
+    auto-continue: true
+    max-auto-continuations: 30
+    pool-size: 4
   delivery:
     require-verification: false
 
@@ -147,3 +192,8 @@ rocketmq:
   name-server: ${realtime.messaging.rocketmq.name-server}
   producer:
     group: ${realtime.messaging.rocketmq.producer-group}
+
+# 关后端时 SSE 断连可能刷 WARN，降为 ERROR 仅保留真正故障
+logging:
+  level:
+    io.modelcontextprotocol.client.transport.HttpClientSseClientTransport: ERROR

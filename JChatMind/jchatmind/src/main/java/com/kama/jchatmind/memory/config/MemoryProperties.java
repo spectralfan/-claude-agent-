@@ -16,6 +16,9 @@ public class MemoryProperties {
     /** 是否启用 Memory Hub（用于与 Think-Execute 主流程 opt-in 集成，阶段 5-6 使用） */
     private boolean enabled = false;
 
+    /** 是否在 loadMemory 时注入 RECENT/ARCHIVE 补充上下文（Coding 长会话建议关闭） */
+    private boolean supplementalEnabled = true;
+
     /** embedding 模型名（复用本地 Ollama 的 bge-m3） */
     private String embeddingModel = "bge-m3";
 

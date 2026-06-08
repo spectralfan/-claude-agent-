@@ -84,18 +84,22 @@ Python 栈使用 **uv 原生工作流**：`pyproject.toml` + `uv.lock`，`uv syn
 
 ### 2.1 启动 mcp-proxy（Windows 推荐内置 shell）
 
-项目自带 Windows 友好 MCP shell（`cmd.exe`，支持 `workingDir`），避免 `@mkusaka/mcp-shell-server` 的 bash 包装问题：
+**默认已随后端自动启动**（`mcp.proxy.auto-start: true`）。后端会在 `scripts/mcp` 下拉起：
+
+```text
+npx -y mcp-proxy --port 3000 --server sse -- node jchatmind-shell-mcp.mjs
+```
+
+若端口 3000 已被占用（例如你已手动运行 proxy），则跳过自动启动。
+
+手动启动（调试 proxy 时）：
 
 ```powershell
 cd JChatMind/jchatmind/scripts/mcp
 .\start-mcp-proxy.ps1
 ```
 
-等价命令：
-
-```text
-npx -y mcp-proxy --port 3000 --server sse -- node jchatmind-shell-mcp.mjs
-```
+关闭自动启动：在 `application.yaml` 设 `mcp.proxy.auto-start: false`。
 
 暴露工具：`execute_command`（后端自动别名 `run_terminal_cmd` / `bash` / `shell`）。
 
@@ -172,10 +176,15 @@ coding:
     default-mode: development
 ```
 
-创建任务时可传：
+创建任务（Claude Code 式，**无需手选技术栈**）：
 
-- `stackId`: `java-maven` / `python-pytest` / `node-npm`
-- `autoDetectStack: true` — 按 `pom.xml` / `pyproject.toml` 等识别
+1. 前端向导：选 **工作区** + **Agent** → 进入对话
+2. 后端默认 `autoDetectStack: true`：有 `pom.xml` / `pyproject.toml` 等则在**首条消息时**自动绑定栈
+3. 未识别时 Agent 自行读目录判断；用户也可在对话中说「用 Python + uv」等
+
+可选 API 字段：
+
+- `stackId` — 显式指定（一般不必）
 - `scaffoldOnCreate: true` — 空目录从 `coding-templates` 脚手架
 
 ---

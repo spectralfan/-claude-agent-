@@ -21,7 +21,11 @@ import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.resolution.StaticToolCallbackResolver;
+import com.kama.jchatmind.mcp.bridge.AliasAwareToolCallbackResolver;
+import com.kama.jchatmind.mcp.bridge.McpToolAliasRegistry;
+import com.kama.jchatmind.mcp.bridge.McpToolBridge;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -110,7 +114,8 @@ public class JChatMind {
                      String chatSessionId,
                      ChatEventPublisher chatEventPublisher,
                      ChatMessageFacadeService chatMessageFacadeService,
-                     ChatMessageConverter chatMessageConverter
+                     ChatMessageConverter chatMessageConverter,
+                     McpToolBridge mcpToolBridge
     ) {
         this.agentId = agentId;
         this.name = name;
@@ -119,7 +124,6 @@ public class JChatMind {
 
         this.chatClient = chatClient;
 
-        this.availableTools = availableTools;
         this.availableKbs = availableKbs;
 
         this.chatSessionId = chatSessionId;
@@ -157,9 +161,10 @@ public class JChatMind {
                 .internalToolExecutionEnabled(false)
                 .build();
 
-        // 工具调用管理器（须与 availableTools 一致，否则 MCP 等动态注入工具无法执行）
+        // 展开 MCP 别名并统一解析（精确名 / 别名 / 连接前缀），避免 run_terminal_cmd 等名称找不到回调
+        this.availableTools = McpToolAliasRegistry.expandAliases(availableTools);
         this.toolCallingManager = ToolCallingManager.builder()
-                .toolCallbackResolver(new StaticToolCallbackResolver(availableTools))
+                .toolCallbackResolver(new AliasAwareToolCallbackResolver(this.availableTools, mcpToolBridge))
                 .build();
     }
 
@@ -416,7 +421,16 @@ public class JChatMind {
                 .chatOptions(this.chatOptions)
                 .build();
 
-        ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, this.lastChatResponse);
+        ToolExecutionResult toolExecutionResult;
+        try {
+            toolExecutionResult = toolCallingManager.executeToolCalls(prompt, this.lastChatResponse);
+        } catch (Exception e) {
+            if (isToolArgumentParseFailure(e)) {
+                log.warn("工具参数 JSON 解析失败，已转为可恢复提示供 Agent 重试: {}", e.getMessage());
+                return recoverFromToolArgumentParseFailure(e);
+            }
+            throw e;
+        }
 
         this.chatMemory.clear(this.chatSessionId);
         this.chatMemory.add(this.chatSessionId, toolExecutionResult.conversationHistory());
@@ -431,6 +445,61 @@ public class JChatMind {
         refreshPendingMessages();
 
         return toolResponseMessage;
+    }
+
+    private ToolResponseMessage recoverFromToolArgumentParseFailure(Throwable e) {
+        AssistantMessage output = this.lastChatResponse.getResult().getOutput();
+        String hint = """
+                工具参数 JSON 无效（常见于单次 write_coding_file 写入超大 HTML/JS，模型输出被截断或引号未转义）。
+                请分步写入，勿在一次工具调用中塞入完整页面/游戏：
+                1. write_coding_file 先写简短骨架（DOCTYPE + head + 空 body，建议 <2000 字符）
+                2. append_coding_file 或 apply_coding_patch 分块追加 style/script
+                3. 单次 content 建议不超过 8000 字符
+                原始错误: %s""".formatted(rootCauseMessage(e));
+
+        List<ToolResponseMessage.ToolResponse> responses = output.getToolCalls().stream()
+                .map(tc -> new ToolResponseMessage.ToolResponse(tc.id(), tc.name(), hint))
+                .toList();
+        ToolResponseMessage toolResponseMessage = ToolResponseMessage.builder()
+                .responses(responses)
+                .build();
+
+        List<Message> history = new ArrayList<>(this.chatMemory.get(this.chatSessionId));
+        history.add(output);
+        history.add(toolResponseMessage);
+        this.chatMemory.clear(this.chatSessionId);
+        this.chatMemory.add(this.chatSessionId, history);
+
+        saveMessage(output);
+        saveMessage(toolResponseMessage);
+        refreshPendingMessages();
+        return toolResponseMessage;
+    }
+
+    private static boolean isToolArgumentParseFailure(Throwable e) {
+        Throwable t = e;
+        while (t != null) {
+            if (t instanceof JsonParseException || t instanceof JsonMappingException) {
+                return true;
+            }
+            String msg = t.getMessage();
+            if (msg != null && (msg.contains("Unexpected end-of-input")
+                    || msg.contains("was expecting closing quote")
+                    || msg.contains("JsonParseException")
+                    || msg.contains("JsonMappingException"))) {
+                return true;
+            }
+            t = t.getCause();
+        }
+        return false;
+    }
+
+    private static String rootCauseMessage(Throwable e) {
+        Throwable root = e;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        return root.getMessage() != null ? root.getMessage() : root.getClass().getSimpleName();
     }
 
     /**
@@ -511,11 +580,23 @@ public class JChatMind {
         } catch (Exception e) {
             agentState = AgentState.ERROR;
             log.error("Error running agent", e);
-            throw new RuntimeException("Error running agent", e);
+            throw new RuntimeException(formatAgentFailureMessage(e), e);
         } finally {
             emitAgentPhase(SseMessage.Type.AI_DONE,
                     agentState == AgentState.ERROR ? "执行出错" : "处理完成");
         }
+    }
+
+    private static String formatAgentFailureMessage(Throwable e) {
+        Throwable root = e;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String detail = root.getMessage();
+        if (detail != null && !detail.isBlank()) {
+            return "Error running agent: " + detail;
+        }
+        return "Error running agent: " + root.getClass().getSimpleName();
     }
 
     @Override

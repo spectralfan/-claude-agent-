@@ -15,6 +15,9 @@ import java.util.List;
 public interface ChatSessionMapper {
     int insert(ChatSession chatSession);
 
+    /** 指定主键插入（子 Agent / 后台会话，满足 chat_message 外键） */
+    int insertWithId(ChatSession chatSession);
+
     ChatSession selectById(String id);
 
     List<ChatSession> selectAll();

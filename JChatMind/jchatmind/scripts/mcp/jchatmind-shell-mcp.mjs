@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Windows 友好 MCP shell：单工具 execute_command，经 cmd.exe 执行，支持 workingDir。
- * 供 mcp-proxy SSE 桥接，替代 bash 包装的 mkusaka / 超时较重的第三方 server。
+ * JChatMind MCP shell：单工具 execute_command。
+ * 跨平台执行委托给 command-runner.mjs（PowerShell@Windows / sh@POSIX）。
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -9,36 +9,43 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import path from "node:path";
-
-const execFileAsync = promisify(execFile);
-const isWin = process.platform === "win32";
-const DEFAULT_TIMEOUT_MS = 300_000;
+import fs from "node:fs";
+import {
+  formatResult,
+  isWindowsPlatform,
+  RUNNER_VERSION,
+  runCommand,
+  unwrapCommandIfJson,
+} from "./command-runner.mjs";
 
 const server = new Server(
-  { name: "jchatmind-shell-mcp", version: "1.0.0" },
+  { name: "jchatmind-shell-mcp", version: "2.3.1" },
   { capabilities: { tools: {} } }
 );
+
+const PLATFORM_HINT = isWindowsPlatform()
+  ? "Windows: commands run via PowerShell; Unix shims (mkdir -p, touch, ls, cp, rm) auto-translated. Set workingDir, prefer relative paths."
+  : "POSIX: commands run via sh; Windows cmd shims (dir, type, copy, md) auto-translated. Set workingDir, prefer relative paths.";
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "execute_command",
       description:
-        "Execute a shell command. On Windows uses cmd.exe. Optional workingDir.",
+        "Execute a shell command in workingDir. " + PLATFORM_HINT +
+        " JS syntax: node --check path.js. File read checks auto-translated. node -e runs without shell quoting.",
       inputSchema: {
         type: "object",
         properties: {
           command: { type: "string", description: "Command line to run" },
           workingDir: {
             type: "string",
-            description: "Working directory (optional)",
+            description: "Working directory (recommended)",
           },
           shell: {
             type: "string",
-            description: "Ignored on Windows; use cmd",
+            description: "Ignored; platform shell is chosen automatically",
           },
         },
         required: ["command"],
@@ -52,54 +59,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     throw new Error(`Unknown tool: ${request.params.name}`);
   }
   const args = request.params.arguments ?? {};
-  const command = String(args.command ?? "").trim();
+  const command = unwrapCommandIfJson(args.command ?? "");
   if (!command) {
     return {
-      content: [{ type: "text", text: "Error: command is required" }],
+      content: [{ type: "text", text: formatResult("Error: command is required", 1) }],
       isError: true,
     };
   }
   const cwd = args.workingDir ? path.resolve(String(args.workingDir)) : process.cwd();
-  try {
-    let stdout = "";
-    let stderr = "";
-    if (isWin) {
-      const result = await execFileAsync("cmd.exe", ["/c", command], {
-        cwd,
-        timeout: DEFAULT_TIMEOUT_MS,
-        maxBuffer: 10 * 1024 * 1024,
-        windowsHide: true,
-        env: process.env,
-      });
-      stdout = result.stdout ?? "";
-      stderr = result.stderr ?? "";
-    } else {
-      const result = await execFileAsync("sh", ["-c", command], {
-        cwd,
-        timeout: DEFAULT_TIMEOUT_MS,
-        maxBuffer: 10 * 1024 * 1024,
-        env: process.env,
-      });
-      stdout = result.stdout ?? "";
-      stderr = result.stderr ?? "";
-    }
-    const text = [stdout, stderr ? `stderr:\n${stderr}` : ""]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
+  if (args.workingDir && !fs.existsSync(cwd)) {
     return {
-      content: [{ type: "text", text: text || "(no output)" }],
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const out = err.stdout ? String(err.stdout) : "";
-    const errOut = err.stderr ? String(err.stderr) : "";
-    const text = [out, errOut, message].filter(Boolean).join("\n").trim();
-    return {
-      content: [{ type: "text", text: text || message }],
+      content: [{
+        type: "text",
+        text: formatResult(`Error: workingDir does not exist: ${cwd}`, 1),
+      }],
       isError: true,
     };
   }
+
+  const result = await runCommand(command, cwd);
+  const text = [result.stdout, result.stderr ? `stderr:\n${result.stderr}` : "", result.message]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  const meta = [
+    `[runner: ${RUNNER_VERSION}]`,
+    result.prepared !== command ? `[normalized: ${result.prepared}]` : "",
+  ].filter(Boolean).join(" ");
+  const metaSuffix = meta ? `\n${meta}` : "";
+
+  if (result.exitCode !== 0) {
+    return {
+      content: [{ type: "text", text: formatResult((text || result.message || "command failed") + metaSuffix, 1) }],
+      isError: true,
+    };
+  }
+  return {
+    content: [{ type: "text", text: formatResult(text + metaSuffix, 0) }],
+  };
 });
 
 const transport = new StdioServerTransport();

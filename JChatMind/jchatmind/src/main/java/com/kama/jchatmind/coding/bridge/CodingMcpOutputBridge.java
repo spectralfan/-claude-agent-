@@ -5,7 +5,6 @@ import com.kama.jchatmind.coding.context.CodingSessionContext;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
 import com.kama.jchatmind.coding.service.CodingTaskService;
 import com.kama.jchatmind.coding.service.CodingVerificationService;
-import com.kama.jchatmind.coding.service.CodingVerificationService;
 import com.kama.jchatmind.message.SseMessage;
 import com.kama.jchatmind.realtime.ChatEventPublisher;
 import lombok.RequiredArgsConstructor;
@@ -99,13 +98,31 @@ public class CodingMcpOutputBridge {
     }
 
     private int inferExitCode(String output) {
+        if (output == null || output.isBlank()) {
+            return 1;
+        }
         String lower = output.toLowerCase(Locale.ROOT);
-        if (lower.contains("exit code: 0") || lower.contains("exitcode=0") || lower.contains("exit code 0")) {
+        if (containsExplicitExitCode(lower, 1)) {
+            return 1;
+        }
+        if (containsExplicitExitCode(lower, 0)) {
             return 0;
         }
-        if (lower.contains("error") || lower.contains("failed") || lower.contains("failure")) {
+        if (lower.contains("调用失败") || lower.contains("\"iserror\":true") || lower.contains("iserror: true")) {
+            return 1;
+        }
+        if (lower.startsWith("error:") || lower.contains("mcp 工具[") && lower.contains("调用失败")) {
+            return 1;
+        }
+        if (lower.contains("command failed") || lower.contains("command not found")) {
             return 1;
         }
         return 0;
+    }
+
+    private static boolean containsExplicitExitCode(String lower, int code) {
+        return lower.contains("exit code: " + code)
+                || lower.contains("exitcode=" + code)
+                || lower.contains("exit code " + code);
     }
 }

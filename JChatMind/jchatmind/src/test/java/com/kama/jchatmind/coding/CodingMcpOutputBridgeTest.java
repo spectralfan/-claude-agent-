@@ -59,4 +59,24 @@ class CodingMcpOutputBridgeTest {
 
         verifyNoInteractions(publisher);
     }
+
+    @Test
+    void onToolResult_exitCode1_shouldNotRecordSuccess() {
+        CodingTaskService taskService = mock(CodingTaskService.class);
+        ChatEventPublisher publisher = mock(ChatEventPublisher.class);
+        CodingVerificationService verificationService = mock(CodingVerificationService.class);
+        CodingMcpOutputBridge bridge = new CodingMcpOutputBridge(
+                taskService, publisher, new CodingProperties(), verificationService);
+
+        CodingTask task = CodingTask.builder().id("t1").sessionId("s1").build();
+        CodingSessionContext.set("s1", "a1");
+        when(taskService.getActiveTask("s1")).thenReturn(task);
+
+        bridge.onToolResult("execute_command", "{\"command\":\"bad\"}",
+                "stderr:\nnot found\nexit code: 1");
+
+        verify(publisher).publish(eq("s1"), argThat(msg ->
+                msg.getPayload().getExitCode() == 1 && Boolean.FALSE.equals(msg.getPayload().getDone())));
+        verify(verificationService, never()).recordSuccess(any(), any(), anyInt());
+    }
 }

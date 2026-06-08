@@ -1,0 +1,5 @@
+# 本地开发（IDE + DevTools）推荐：spring.profiles.active=dev
+# DevTools 热重启时勿杀 MCP proxy，避免 SSE 断连与 8080 端口争抢
+mcp:
+  proxy:
+    stop-on-shutdown: false

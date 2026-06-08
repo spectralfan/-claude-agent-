@@ -3,6 +3,7 @@ package com.kama.jchatmind.agent.tools.coding;
 import com.kama.jchatmind.agent.tools.Tool;
 import com.kama.jchatmind.agent.tools.ToolType;
 import com.kama.jchatmind.coding.context.CodingSessionContext;
+import com.kama.jchatmind.coding.context.SubAgentRunContext;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
 import com.kama.jchatmind.coding.registry.CodingChangeRegistry;
 import com.kama.jchatmind.coding.service.CodingTaskService;
@@ -41,6 +42,9 @@ public class CodingCompleteTool implements Tool {
             description = "在验证命令全部通过后调用，写入任务完成摘要并通知前端。summary 应包含：改了哪些文件、如何运行。"
     )
     public String markComplete(String summary) {
+        if (SubAgentRunContext.get() != null) {
+            return "错误：Worker 子 Agent 不能标记父任务完成。请完成本子目标后结束；由 Orchestrator 汇总全部子任务后调用 mark_coding_complete。";
+        }
         CodingSessionContext.Context ctx = CodingSessionContext.get();
         if (ctx == null) {
             return "错误：无 Coding 会话上下文";

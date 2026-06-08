@@ -15,8 +15,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -69,7 +71,9 @@ public class CodingFileTools implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(
             name = "write_coding_file",
-            description = "写入 Coding 工作区内的文件；不存在则创建，存在则覆盖。relativePath 为相对路径"
+            description = """
+                    写入 Coding 工作区内的文件；不存在则创建，存在则覆盖。
+                    大文件（HTML/JS>8KB）勿单次整文件写入，易触发 JSON 截断；请先写骨架再用 append_coding_file / apply_coding_patch 分块追加。"""
     )
     public String writeFile(String relativePath, String content) {
         try {
@@ -101,6 +105,40 @@ public class CodingFileTools implements Tool {
         } catch (IOException e) {
             log.error("写入文件失败: {}", relativePath, e);
             return "错误：写入失败 - " + e.getMessage();
+        }
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(
+            name = "append_coding_file",
+            description = "向已存在文件末尾追加内容（大 HTML/JS 请多次 append，单次建议<8000字符）"
+    )
+    public String appendFile(String relativePath, String content) {
+        try {
+            Path path = resolveFilePath(relativePath);
+            String normalizedPath = normalizeRelativePath(relativePath);
+            if (!Files.exists(path) || !Files.isRegularFile(path)) {
+                return "错误：文件不存在，请先用 write_coding_file 创建 - " + relativePath;
+            }
+            String oldContent = Files.readString(path);
+            String chunk = content == null ? "" : content;
+            Files.writeString(path, chunk, StandardCharsets.UTF_8,
+                    StandardOpenOption.APPEND);
+            String newContent = oldContent + chunk;
+            notifyFileChanged(normalizedPath, "modified", oldContent, newContent);
+            CodingSessionContext.Context ctx = CodingSessionContext.get();
+            if (ctx != null) {
+                CodingTask task = codingTaskService.getActiveTask(ctx.sessionId());
+                if (task != null) {
+                    changeRegistry.recordChange(task.getId(), normalizedPath, "modified");
+                    codingVerificationService.invalidate(task.getId());
+                }
+            }
+            return "成功追加: " + normalizedPath + " (+" + chunk.length() + " 字符)";
+        } catch (IllegalStateException e) {
+            return e.getMessage();
+        } catch (IOException e) {
+            log.error("追加文件失败: {}", relativePath, e);
+            return "错误：追加失败 - " + e.getMessage();
         }
     }
 

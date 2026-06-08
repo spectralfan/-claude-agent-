@@ -1,6 +1,8 @@
 package com.kama.jchatmind.service.impl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kama.jchatmind.converter.ChatSessionConverter;
 import com.kama.jchatmind.exception.BizException;
 import com.kama.jchatmind.mapper.ChatSessionMapper;
@@ -26,12 +28,16 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
 
     private final ChatSessionMapper chatSessionMapper;
     private final ChatSessionConverter chatSessionConverter;
+    private final ObjectMapper objectMapper;
 
     @Override
     public GetChatSessionsResponse getChatSessions() {
         List<ChatSession> chatSessions = chatSessionMapper.selectAll();
         List<ChatSessionVO> result = new ArrayList<>();
         for (ChatSession chatSession : chatSessions) {
+            if (isHiddenBackgroundSession(chatSession)) {
+                continue;
+            }
             try {
                 ChatSessionVO vo = chatSessionConverter.toVO(chatSession);
                 result.add(vo);
@@ -65,6 +71,9 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
         List<ChatSession> chatSessions = chatSessionMapper.selectByAgentId(agentId);
         List<ChatSessionVO> result = new ArrayList<>();
         for (ChatSession chatSession : chatSessions) {
+            if (isHiddenBackgroundSession(chatSession)) {
+                continue;
+            }
             try {
                 ChatSessionVO vo = chatSessionConverter.toVO(chatSession);
                 result.add(vo);
@@ -75,6 +84,19 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
         return GetChatSessionsResponse.builder()
                 .chatSessions(result.toArray(new ChatSessionVO[0]))
                 .build();
+    }
+
+    private boolean isHiddenBackgroundSession(ChatSession session) {
+        if (session.getMetadata() == null || session.getMetadata().isBlank()) {
+            return false;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(session.getMetadata());
+            return node.path("hidden").asBoolean(false)
+                    || "coding_subtask".equals(node.path("kind").asText(null));
+        } catch (JsonProcessingException e) {
+            return false;
+        }
     }
 
     @Override

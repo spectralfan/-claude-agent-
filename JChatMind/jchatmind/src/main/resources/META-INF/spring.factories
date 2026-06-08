@@ -1,0 +1,2 @@
+org.springframework.context.ApplicationContextInitializer=\
+com.kama.jchatmind.mcp.bootstrap.McpProxyApplicationContextInitializer

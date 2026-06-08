@@ -6,6 +6,7 @@ import com.kama.jchatmind.config.ChatClientRegistry;
 import com.kama.jchatmind.converter.AgentConverter;
 import com.kama.jchatmind.converter.ChatMessageConverter;
 import com.kama.jchatmind.converter.KnowledgeBaseConverter;
+import com.kama.jchatmind.coding.CodingAgentRoles;
 import com.kama.jchatmind.coding.config.CodingProperties;
 import com.kama.jchatmind.coding.config.CodingSubagentProperties;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
@@ -13,6 +14,8 @@ import com.kama.jchatmind.coding.service.CodingTaskService;
 import com.kama.jchatmind.coding.service.CodingPromptComposer;
 import com.kama.jchatmind.mapper.AgentMapper;
 import com.kama.jchatmind.mapper.KnowledgeBaseMapper;
+import com.kama.jchatmind.mcp.bridge.McpToolAliasRegistry;
+import com.kama.jchatmind.mcp.bridge.McpToolBridge;
 import com.kama.jchatmind.mcp.config.McpProperties;
 import com.kama.jchatmind.mcp.integration.McpIntegration;
 import com.kama.jchatmind.mcp.integration.McpIntegrationImpl;
@@ -57,6 +60,7 @@ public class JChatMindFactory {
     private final MemoryIntegration memoryIntegration;
     private final McpProperties mcpProperties;
     private final McpIntegration mcpIntegration;
+    private final McpToolBridge mcpToolBridge;
     private final CodingPromptComposer codingPromptComposer;
     private final CodingTaskService codingTaskService;
     private final CodingProperties codingProperties;
@@ -79,6 +83,7 @@ public class JChatMindFactory {
             MemoryIntegration memoryIntegration,
             McpProperties mcpProperties,
             McpIntegration mcpIntegration,
+            McpToolBridge mcpToolBridge,
             CodingPromptComposer codingPromptComposer,
             CodingTaskService codingTaskService,
             CodingProperties codingProperties,
@@ -97,6 +102,7 @@ public class JChatMindFactory {
         this.memoryIntegration = memoryIntegration;
         this.mcpProperties = mcpProperties;
         this.mcpIntegration = mcpIntegration;
+        this.mcpToolBridge = mcpToolBridge;
         this.codingPromptComposer = codingPromptComposer;
         this.codingTaskService = codingTaskService;
         this.codingProperties = codingProperties;
@@ -104,7 +110,7 @@ public class JChatMindFactory {
     }
 
     private String buildSystemPromptWithRules(String basePrompt, String chatSessionId) {
-        return codingPromptComposer.composeSystemPrompt(basePrompt, chatSessionId);
+        return codingPromptComposer.composeSystemPrompt(basePrompt, chatSessionId, agentConfig);
     }
 
     private Agent loadAgent(String agentId) {
@@ -122,7 +128,10 @@ public class JChatMindFactory {
         List<Message> memory = loadChatMessageHistory(chatSessionId, enrichedUserInput);
 
         // Memory Hub：在 chat_message 主链路之外注入 RECENT/ARCHIVE 历史摘要（保留 tool 链完整性）
-        if (memoryProperties.isEnabled()) {
+        boolean injectSupplemental = memoryProperties.isEnabled()
+                && memoryProperties.isSupplementalEnabled()
+                && codingTaskService.getActiveTask(chatSessionId) == null;
+        if (injectSupplemental) {
             try {
                 List<Message> supplemental = memoryIntegration.buildSupplementalContext(chatSessionId, 0);
                 if (supplemental != null && !supplemental.isEmpty()) {
@@ -300,6 +309,7 @@ public class JChatMindFactory {
             throw new IllegalStateException("未找到对应的 ChatClient: " + agent.getModel());
         }
         int memoryWindow = resolveMemoryWindow(taskSessionId, agentConfig, subAgent);
+        McpToolBridge bridgeForResolver = CodingAgentRoles.isOrchestrator(agentConfig) ? null : mcpToolBridge;
         return new JChatMind(
                 agent.getId(),
                 agent.getName(),
@@ -314,7 +324,8 @@ public class JChatMindFactory {
                 chatSessionId,
                 chatEventPublisher,
                 chatMessageFacadeService,
-                chatMessageConverter
+                chatMessageConverter,
+                bridgeForResolver
         );
     }
 
@@ -342,6 +353,23 @@ public class JChatMindFactory {
     /**
      * @param enrichedUserInput 若非空，替换记忆中最后一条用户消息（用于 @file 展开）
      */
+    /**
+     * 编排自动继续：在历史消息后追加一条 UserMessage，不替换最后一条用户消息。
+     */
+    public JChatMind createContinuation(String agentId, String chatSessionId, String continuationPrompt) {
+        Agent agent = loadAgent(agentId);
+        AgentDTO agentConfig = toAgentConfig(agent);
+        List<Message> memory = loadMemory(chatSessionId);
+        memory.add(new UserMessage(continuationPrompt));
+
+        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
+        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig);
+        List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
+        injectMcpToolCallbacks(toolCallbacks, agentConfig, chatSessionId, agentId);
+        return buildAgentRuntimeWithCodingSteps(
+                agent, memory, knowledgeBases, toolCallbacks, chatSessionId);
+    }
+
     public JChatMind create(String agentId, String chatSessionId, String enrichedUserInput) {
         Agent agent = loadAgent(agentId);
         AgentDTO agentConfig = toAgentConfig(agent);
@@ -354,24 +382,7 @@ public class JChatMindFactory {
         // 将工具调用转换成 ToolCallback 的形式
         List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
 
-        // MCP opt-in：启用时按 allowedTools 白名单追加 MCP 工具，失败/无连接时静默跳过
-        if (mcpProperties.isEnabled()) {
-            try {
-                List<ToolCallback> mcpTools = mcpIntegration.getToolsForAgent(agentConfig.getAllowedTools());
-                if (!mcpTools.isEmpty()) {
-                    toolCallbacks.addAll(mcpTools);
-                    log.info("已为 Agent[{}] 注入 {} 个 MCP 工具: {}", agentId, mcpTools.size(),
-                            mcpTools.stream().map(t -> t.getToolDefinition().name()).toList());
-                } else if (agentConfig.getAllowedTools() != null
-                        && agentConfig.getAllowedTools().stream().anyMatch(McpIntegrationImpl::isTerminalToolName)) {
-                    log.warn("Agent[{}] 白名单含终端工具但未发现 MCP 工具，请检查 mcp-proxy 与 spring.ai.mcp.client",
-                            agentId);
-                }
-            } catch (Exception e) {
-                log.warn("注入 MCP 工具失败，已跳过: {}", e.getMessage());
-            }
-        }
-
+        injectMcpToolCallbacks(toolCallbacks, agentConfig, chatSessionId, agentId);
         return buildAgentRuntimeWithCodingSteps(
                 agent,
                 memory,
@@ -395,18 +406,7 @@ public class JChatMindFactory {
         List<Tool> runtimeTools = filterWorkerTools(resolveRuntimeTools(agentConfig));
         List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
 
-        if (mcpProperties.isEnabled()) {
-            try {
-                List<ToolCallback> mcpTools = mcpIntegration.getToolsForAgent(agentConfig.getAllowedTools());
-                if (!mcpTools.isEmpty()) {
-                    toolCallbacks.addAll(mcpTools);
-                    log.info("已为子 Agent[{}] 注入 {} 个 MCP 工具", workerAgentId, mcpTools.size());
-                }
-            } catch (Exception e) {
-                log.warn("子 Agent 注入 MCP 工具失败，已跳过: {}", e.getMessage());
-            }
-        }
-
+        injectMcpToolCallbacks(toolCallbacks, agentConfig, parentSessionId, workerAgentId);
         JChatMind jChatMind = buildAgentRuntime(
                 agent, memory, knowledgeBases, toolCallbacks, subSessionId, parentSessionId, true);
         jChatMind.setEventSessionId(parentSessionId);
@@ -414,6 +414,63 @@ public class JChatMindFactory {
             jChatMind.setMaxSteps(codingSubagentProperties.getMaxLoopSteps());
         }
         return jChatMind;
+    }
+
+    /**
+     * Coding Worker 会话内注入 MCP shell 工具。
+     * Orchestrator 仅委派，不得获得终端工具（避免 Worker 失败后父 Agent 亲自改代码）。
+     */
+    private void injectMcpToolCallbacks(List<ToolCallback> toolCallbacks,
+                                        AgentDTO agentConfig,
+                                        String sessionId,
+                                        String agentId) {
+        if (!mcpProperties.isEnabled() || CodingAgentRoles.isOrchestrator(agentConfig)) {
+            return;
+        }
+        try {
+            List<String> allowedForMcp = resolveMcpAllowedTools(agentConfig, sessionId);
+            Set<String> names = new LinkedHashSet<>();
+            List<ToolCallback> merged = new ArrayList<>();
+            for (ToolCallback cb : mcpIntegration.getToolsForAgent(allowedForMcp)) {
+                String name = cb.getToolDefinition().name();
+                if (names.add(name)) {
+                    merged.add(cb);
+                }
+            }
+            if (codingTaskService.getActiveTask(sessionId) != null) {
+                for (ToolCallback cb : mcpIntegration.getShellToolCallbacks()) {
+                    String name = cb.getToolDefinition().name();
+                    if (names.add(name)) {
+                        merged.add(cb);
+                    }
+                }
+            }
+            if (!merged.isEmpty()) {
+                toolCallbacks.addAll(merged);
+                log.info("已为 Agent[{}] 注入 {} 个 MCP 工具: {}", agentId, merged.size(),
+                        merged.stream().map(t -> t.getToolDefinition().name()).toList());
+            } else {
+                log.warn("Agent[{}] 未发现 MCP 工具，终端将不可用。请确认 mcp-proxy :3000 与 spring.ai.mcp.client.enabled",
+                        agentId);
+            }
+        } catch (Exception e) {
+            log.warn("注入 MCP 工具失败，已跳过: {}", e.getMessage());
+        }
+    }
+
+    private List<String> resolveMcpAllowedTools(AgentDTO agentConfig, String sessionId) {
+        List<String> allowed = agentConfig.getAllowedTools() != null
+                ? new ArrayList<>(agentConfig.getAllowedTools())
+                : new ArrayList<>();
+        if (codingTaskService.getActiveTask(sessionId) != null
+                && !CodingAgentRoles.isOrchestrator(agentConfig)) {
+            for (String terminal : McpToolAliasRegistry.TERMINAL_TOOL_NAMES) {
+                if (!allowed.contains(terminal)) {
+                    allowed.add(terminal);
+                }
+            }
+        }
+        return allowed;
     }
 
     private List<Tool> filterWorkerTools(List<Tool> tools) {

@@ -38,6 +38,11 @@ public class CodingProperties {
         private String root = "./workspace";
         /** 网页预览单文件最大字符数 */
         private int previewMaxChars = 512_000;
+        /**
+         * 工作区 HTML 静态预览推荐端口（勿与 JChatMind 后端 8080、MCP proxy 3000、Vite 5173 冲突）。
+         * 注入 MCP shell 环境变量 JCHATMIND_PREVIEW_PORT。
+         */
+        private int previewPort = 5500;
         /** SSE 推送 diff 内容最大字符数 */
         private int sseDiffMaxChars = 16_000;
         /** 文件树忽略的目录名 */

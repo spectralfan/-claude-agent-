@@ -2,6 +2,7 @@ package com.kama.jchatmind.converter;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.kama.jchatmind.model.dto.ChatSessionDTO;
 import com.kama.jchatmind.model.entity.ChatSession;
 import com.kama.jchatmind.model.request.CreateChatSessionRequest;
@@ -24,8 +25,8 @@ public class ChatSessionConverter {
                 .id(chatSessionDTO.getId())
                 .agentId(chatSessionDTO.getAgentId())
                 .title(chatSessionDTO.getTitle())
-                .metadata(chatSessionDTO.getMetadata() != null 
-                        ? objectMapper.writeValueAsString(chatSessionDTO.getMetadata()) 
+                .metadata(chatSessionDTO.getMetadata() != null
+                        ? writeSessionMetadata(chatSessionDTO.getMetadata())
                         : null)
                 .createdAt(chatSessionDTO.getCreatedAt())
                 .updatedAt(chatSessionDTO.getUpdatedAt())
@@ -63,10 +64,42 @@ public class ChatSessionConverter {
         Assert.notNull(request, "CreateChatSessionRequest cannot be null");
         Assert.notNull(request.getAgentId(), "AgentId cannot be null");
 
+        ChatSessionDTO.MetaData meta = null;
+        if (hasCodingBinding(request)) {
+            meta = new ChatSessionDTO.MetaData();
+            meta.setWorkspaceRoot(request.getWorkspaceRoot());
+            meta.setWorkspacePath(request.getWorkspacePath());
+            meta.setApprovalMode(request.getApprovalMode());
+            meta.setScaffoldOnCreate(request.getScaffoldOnCreate());
+        }
         return ChatSessionDTO.builder()
                 .agentId(request.getAgentId())
                 .title(request.getTitle())
+                .metadata(meta)
                 .build();
+    }
+
+    private boolean hasCodingBinding(CreateChatSessionRequest request) {
+        return request.getWorkspaceRoot() != null && !request.getWorkspaceRoot().isBlank();
+    }
+
+    private String writeSessionMetadata(ChatSessionDTO.MetaData meta) throws JsonProcessingException {
+        ObjectNode root = objectMapper.createObjectNode();
+        ObjectNode coding = objectMapper.createObjectNode();
+        if (meta.getWorkspaceRoot() != null) {
+            coding.put("workspaceRoot", meta.getWorkspaceRoot());
+        }
+        if (meta.getWorkspacePath() != null) {
+            coding.put("workspacePath", meta.getWorkspacePath());
+        }
+        if (meta.getApprovalMode() != null) {
+            coding.put("approvalMode", meta.getApprovalMode());
+        }
+        if (meta.getScaffoldOnCreate() != null) {
+            coding.put("scaffoldOnCreate", meta.getScaffoldOnCreate());
+        }
+        root.set("coding", coding);
+        return objectMapper.writeValueAsString(root);
     }
 
     public void updateDTOFromRequest(ChatSessionDTO dto, UpdateChatSessionRequest request) {

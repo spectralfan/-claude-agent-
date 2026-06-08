@@ -90,6 +90,10 @@ export async function updateAgent(
 export interface CreateChatSessionRequest {
   agentId: string;
   title?: string;
+  workspaceRoot?: string;
+  workspacePath?: string;
+  approvalMode?: CodingApprovalModeType;
+  scaffoldOnCreate?: boolean;
 }
 
 export interface CreateChatSessionResponse {

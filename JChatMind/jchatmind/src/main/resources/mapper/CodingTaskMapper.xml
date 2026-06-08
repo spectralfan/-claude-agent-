@@ -117,4 +117,10 @@
             result_summary = #{resultSummary}
         WHERE id = CAST(#{id} AS uuid)
     </update>
+
+    <update id="updateMetadata">
+        UPDATE t_coding_task
+        SET metadata = CAST(#{metadata} AS jsonb)
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
 </mapper>

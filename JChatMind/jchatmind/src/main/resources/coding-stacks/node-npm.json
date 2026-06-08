@@ -5,10 +5,10 @@
   "detectFiles": ["package.json"],
   "scaffoldTemplate": "node-npm",
   "skillId": "node-autonomous-dev",
-  "suggestedMcpTools": ["run_terminal_cmd", "bash"],
-  "verifyWorkflow": "改代码后通过 MCP 执行 npm test；失败则读输出修复再测",
+  "suggestedMcpTools": ["run_terminal_cmd"],
+  "verifyWorkflow": "改代码后优先 run_allowed_verify(\"npm test\")；JS 语法用 check_js_syntax(path)；失败则读输出修复再测",
   "doneCriteria": "npm test exit 0",
-  "suggestedAgentTools": ["coding_file_tools", "run_terminal_cmd"],
+  "suggestedAgentTools": ["coding_file_tools", "coding_verify_tools", "run_terminal_cmd"],
   "verifyCommands": [
     { "label": "npm test", "type": "shell", "command": "npm test" }
   ]

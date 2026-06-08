@@ -31,7 +31,6 @@ import {
   getChatMessagesBySessionId,
   getActiveCodingTask,
   getCodingWorkspaces,
-  getCodingSkills,
   getCodingStacks,
   getCodingAgentPreset,
   getCodingOrchestratorPreset,
@@ -44,7 +43,6 @@ import {
   runMavenCommand,
   type CodingApprovalModeType,
   type CodingRuntimeStatusVO,
-  type CodingSkillVO,
   type CodingStackVO,
   type StackVerifyCommandVO,
   type CodingTaskSummaryVO,
@@ -107,16 +105,12 @@ const CodingView: React.FC = () => {
   const [workspaceOptions, setWorkspaceOptions] = useState<CodingWorkspaceOption[]>([]);
   const [workspaceRoot, setWorkspaceRoot] = useState<string>("");
   const [workspacePath, setWorkspacePath] = useState<string>(".");
-  const [stackId, setStackId] = useState<string>("java-maven");
   const [stackOptions, setStackOptions] = useState<CodingStackVO[]>([]);
   const [scaffoldOnCreate, setScaffoldOnCreate] = useState(false);
-  const [autoDetectStack, setAutoDetectStack] = useState(true);
   const [detectHint, setDetectHint] = useState<string>("");
   const [wizardStep, setWizardStep] = useState(0);
-  const [skillId, setSkillId] = useState<string>("");
   const [approvalMode, setApprovalMode] =
     useState<CodingApprovalModeType>("development");
-  const [skillOptions, setSkillOptions] = useState<CodingSkillVO[]>([]);
   const [sessionId, setSessionId] = useState<string>("");
   const [task, setTask] = useState<CodingTaskVO | null>(null);
   const [taskSummary, setTaskSummary] = useState<CodingTaskSummaryVO | null>(
@@ -174,16 +168,8 @@ const CodingView: React.FC = () => {
           "无法加载工作区列表，请检查 coding.workspace.allowed-roots",
         );
       });
-    getCodingSkills()
-      .then(setSkillOptions)
-      .catch(() => undefined);
     getCodingStacks()
-      .then((stacks) => {
-        setStackOptions(stacks);
-        if (stacks.length > 0 && !stackId) {
-          setStackId(stacks[0].id);
-        }
-      })
+      .then(setStackOptions)
       .catch(() => undefined);
   }, []);
 
@@ -216,6 +202,8 @@ const CodingView: React.FC = () => {
         if (cancelled) return;
         if (active) {
           setTask(active);
+        } else if (workspaceRoot) {
+          setTask(null);
         }
         const msgResp = await getChatMessagesBySessionId(routeSessionId);
         if (!cancelled) {
@@ -233,7 +221,7 @@ const CodingView: React.FC = () => {
   }, [routeSessionId]);
 
   useEffect(() => {
-    if (!workspaceRoot || !autoDetectStack) {
+    if (!workspaceRoot) {
       setDetectHint("");
       return;
     }
@@ -241,28 +229,19 @@ const CodingView: React.FC = () => {
       detectCodingWorkspace(workspaceRoot, workspacePath.trim() || ".")
         .then((result) => {
           if (result.stackId) {
-            setStackId(result.stackId);
             setDetectHint(
-              `检测到 ${result.matchedFile} → ${result.displayName ?? result.stackId}`,
+              `预览：检测到 ${result.matchedFile} → ${result.displayName ?? result.stackId}（进入对话后自动绑定）`,
             );
           } else if (result.emptyWorkspace) {
-            setDetectHint("工作区为空，可勾选「从零脚手架」");
+            setDetectHint("工作区为空：可在对话中描述要创建的项目，或勾选「从零脚手架」");
           } else {
-            setDetectHint("未识别技术栈，请手动选择");
+            setDetectHint("未识别到特征文件：Agent 将在对话中自行判断技术栈与验证方式");
           }
         })
         .catch(() => setDetectHint(""));
     }, 400);
     return () => clearTimeout(timer);
-  }, [workspaceRoot, workspacePath, autoDetectStack]);
-
-  useEffect(() => {
-    if (!stackId) return;
-    const stack = stackOptions.find((s) => s.id === stackId);
-    if (stack?.skillId) {
-      setSkillId(stack.skillId);
-    }
-  }, [stackId, stackOptions]);
+  }, [workspaceRoot, workspacePath]);
 
   const loadMessages = useCallback(async () => {
     if (!sessionId) return;
@@ -345,9 +324,11 @@ const CodingView: React.FC = () => {
           setAgentStatusText("");
           setAgentStatusType(undefined);
           loadMessages().catch(() => undefined);
+          refreshTask().catch(() => undefined);
           break;
         case "CODING_STARTED":
           appendLog("started", p.statusText || "任务已创建");
+          refreshTaskBySession().catch(() => undefined);
           break;
         case "CODING_APPROVAL_REQUIRED":
           appendLog("approval", `需要审批: ${p.detail ?? ""}`);
@@ -422,7 +403,7 @@ const CodingView: React.FC = () => {
           break;
       }
     },
-    [appendLog, loadMessages, refreshTaskBySession],
+    [appendLog, loadMessages, refreshTask, refreshTaskBySession],
   );
 
   useSessionSse(sessionId || undefined, handleSseEvent);
@@ -445,30 +426,23 @@ const CodingView: React.FC = () => {
       const session = await createChatSession({
         agentId,
         title: `Coding @ ${workspacePath}`,
+        workspaceRoot,
+        workspacePath: workspacePath.trim(),
+        approvalMode,
+        scaffoldOnCreate,
       });
       setSessionId(session.chatSessionId);
       navigate(`/coding/${session.chatSessionId}`, { replace: true });
-      const created = await createCodingTask({
-        sessionId: session.chatSessionId,
-        agentId,
-        workspaceRoot,
-        workspacePath: workspacePath.trim(),
-        stackId: stackId || undefined,
-        skillId: skillId || undefined,
-        approvalMode,
-        scaffoldOnCreate,
-        autoDetectStack,
-      });
-      setTask(created);
+      setTask(null);
       setTaskSummary(null);
       setLogs([]);
       setSelectedFilePath(undefined);
       setFileDiff(null);
       setShowSetup(false);
-      appendLog("started", `任务已创建: ${created.id}`);
-      antdMessage.success("Coding 工作台已就绪");
+      appendLog("started", "会话已就绪，请直接描述开发任务");
+      antdMessage.success("进入工作台，发送首条消息即可自动开始开发");
     } catch (e) {
-      antdMessage.error(e instanceof Error ? e.message : "创建任务失败");
+      antdMessage.error(e instanceof Error ? e.message : "创建会话失败");
     } finally {
       setCreating(false);
     }
@@ -476,7 +450,7 @@ const CodingView: React.FC = () => {
 
   const handleChatSend = async (value: string | { text: string }) => {
     const message = typeof value === "string" ? value : value.text;
-    if (!message?.trim() || !sessionId || !agentId || !task) return;
+    if (!message?.trim() || !sessionId || !agentId) return;
     setChatSending(true);
     try {
       await createChatMessage({
@@ -580,7 +554,7 @@ const CodingView: React.FC = () => {
     setFileDiff(null);
   };
 
-  if (!task) {
+  if (!sessionId) {
     return (
       <div className="flex flex-col h-full p-6 overflow-y-auto">
         <div className="max-w-2xl w-full mx-auto flex flex-col gap-4">
@@ -599,14 +573,13 @@ const CodingView: React.FC = () => {
               </div>
             </div>
           </Card>
-          <Card title="创建 Coding 任务">
+          <Card title="开始 AI Coding">
             <Steps
               size="small"
               current={wizardStep}
               className="mb-4"
               items={[
                 { title: "工作区" },
-                { title: "技术栈" },
                 { title: "Agent" },
               ]}
             />
@@ -628,18 +601,16 @@ const CodingView: React.FC = () => {
                     onChange={(e) => setWorkspacePath(e.target.value)}
                     placeholder="子路径，如 . 或 api-module"
                   />
-                  <div className="flex items-center justify-between">
-                    <Text type="secondary">自动检测技术栈</Text>
-                    <Switch
-                      checked={autoDetectStack}
-                      onChange={setAutoDetectStack}
-                    />
-                  </div>
                   {detectHint && (
                     <Alert type="info" showIcon message={detectHint} />
                   )}
+                  <Alert
+                    type="success"
+                    showIcon
+                    message="技术栈无需预先选择，进入对话后 Agent 会根据项目文件自动识别；也可在消息中说明「用 Python + uv」等偏好。"
+                  />
                   <div className="flex items-center justify-between">
-                    <Text type="secondary">空目录脚手架（从零创建）</Text>
+                    <Text type="secondary">空目录脚手架（从零创建，可选）</Text>
                     <Switch
                       checked={scaffoldOnCreate}
                       onChange={setScaffoldOnCreate}
@@ -651,37 +622,6 @@ const CodingView: React.FC = () => {
                 </>
               )}
               {wizardStep === 1 && (
-                <>
-                  <Select
-                    placeholder="技术栈 Profile"
-                    value={stackId || undefined}
-                    onChange={setStackId}
-                    options={stackOptions.map((s) => ({
-                      value: s.id,
-                      label: `${s.displayName} (${s.language})`,
-                    }))}
-                    className="w-full"
-                  />
-                  <Select
-                    placeholder="Skill（可选，默认随栈）"
-                    value={skillId || undefined}
-                    onChange={setSkillId}
-                    allowClear
-                    options={skillOptions.map((s) => ({
-                      value: s.id,
-                      label: `${s.name} — ${s.description}`,
-                    }))}
-                    className="w-full"
-                  />
-                  <Space>
-                    <Button onClick={() => setWizardStep(0)}>上一步</Button>
-                    <Button type="primary" onClick={() => setWizardStep(2)}>
-                      下一步
-                    </Button>
-                  </Space>
-                </>
-              )}
-              {wizardStep === 2 && (
                 <>
                   <Select
                     value={agentRole}
@@ -717,14 +657,14 @@ const CodingView: React.FC = () => {
                     className="w-full"
                   />
                   <Space>
-                    <Button onClick={() => setWizardStep(1)}>上一步</Button>
+                    <Button onClick={() => setWizardStep(0)}>上一步</Button>
                     <Button
                       type="primary"
                       icon={<PlayCircleOutlined />}
                       loading={creating}
                       onClick={handleCreateTask}
                     >
-                      进入工作台
+                      开始开发
                     </Button>
                   </Space>
                 </>
@@ -744,20 +684,23 @@ const CodingView: React.FC = () => {
           <CodeOutlined className="text-emerald-600 text-lg" />
           <div className="min-w-0">
             <Text strong className="block truncate">
-              {task.workspaceRoot?.split(/[/\\]/).pop() ?? "工程"} /{" "}
-              {task.workspacePath}
+              {task
+                ? `${task.workspaceRoot?.split(/[/\\]/).pop() ?? "工程"} / ${task.workspacePath}`
+                : workspaceRoot
+                  ? `${workspaceRoot.split(/[/\\]/).pop()} / ${workspacePath}`
+                  : "AI Coding"}
             </Text>
             <Text type="secondary" className="text-xs">
-              任务 {task.id.slice(0, 8)}…
+              {task
+                ? `任务 ${task.id.slice(0, 8)}…`
+                : "发送任务描述后自动创建 Coding 任务"}
             </Text>
           </div>
-          <Tag color={STATUS_COLOR[task.status]}>{task.status}</Tag>
-          {task.stackId && <Tag color="geekblue">{task.stackId}</Tag>}
-          {task.language && <Tag>{task.language}</Tag>}
-          {task.skillId && <Tag color="blue">Skill: {task.skillId}</Tag>}
-          {task.approvalMode && (
-            <Tag>{task.approvalMode}</Tag>
-          )}
+          {task && <Tag color={STATUS_COLOR[task.status]}>{task.status}</Tag>}
+          {task?.stackId && <Tag color="geekblue">{task.stackId}</Tag>}
+          {task?.language && <Tag>{task.language}</Tag>}
+          {task?.skillId && <Tag color="blue">Skill: {task.skillId}</Tag>}
+          {task?.approvalMode && <Tag>{task.approvalMode}</Tag>}
           {runtimeStatus && (
             <Tag color={runtimeStatus.mcpEnabled ? "green" : "orange"}>
               MCP {runtimeStatus.mcpEnabled ? "已启用" : "未启用"}
@@ -809,7 +752,7 @@ const CodingView: React.FC = () => {
               当前栈未配置 verifyCommands
             </Text>
           )}
-          {task.stackId === "java-maven" && (
+          {task?.stackId === "java-maven" && (
             <>
               <Select
                 size="small"
@@ -842,20 +785,32 @@ const CodingView: React.FC = () => {
       {/* 三栏主区域 */}
       <div className="flex-1 flex min-h-0">
         <div className="w-56 shrink-0 min-h-0">
-          <CodingFileTree
-            taskId={task.id}
-            selectedPath={selectedFilePath}
-            onSelectFile={handleSelectFile}
-            refreshToken={treeRefreshToken}
-          />
+          {task ? (
+            <CodingFileTree
+              taskId={task.id}
+              selectedPath={selectedFilePath}
+              onSelectFile={handleSelectFile}
+              refreshToken={treeRefreshToken}
+            />
+          ) : (
+            <div className="p-3 text-xs text-gray-400">
+              发送首条任务消息后显示文件树
+            </div>
+          )}
         </div>
         <div className="flex-1 min-w-0 min-h-0">
-          <CodingFilePreview
-            taskId={task.id}
-            filePath={selectedFilePath}
-            diff={fileDiff}
-            stackLanguage={task.language}
-          />
+          {task ? (
+            <CodingFilePreview
+              taskId={task.id}
+              filePath={selectedFilePath}
+              diff={fileDiff}
+              stackLanguage={task.language}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+              描述你的开发目标，Agent 将自动创建任务并开始编排
+            </div>
+          )}
         </div>
         <div className="w-[380px] shrink-0 flex flex-col min-h-0 border-l border-gray-200">
           <div className="px-3 py-2 border-b border-gray-100 shrink-0">
@@ -867,14 +822,14 @@ const CodingView: React.FC = () => {
               showIcon={false}
               banner
               className="mt-2 py-1"
-              message="Claude Code 模式：MCP 终端验证 + 自主改代码；可用 @文件 引用"
+              message="Claude Code 模式：选定工作区后直接对话；技术栈自动识别，可用 @文件 引用"
             />
           </div>
           <CodingSubtaskPanel
             sessionId={sessionId}
             refreshToken={subtaskRefreshToken}
           />
-          {taskSummary && task.status === "COMPLETED" && (
+          {taskSummary && task?.status === "COMPLETED" && (
             <CodingCompletionCard
               summary={taskSummary}
               onOpenFile={(path) => {
@@ -948,16 +903,6 @@ const CodingView: React.FC = () => {
           <Input
             value={workspacePath}
             onChange={(e) => setWorkspacePath(e.target.value)}
-          />
-          <Select
-            value={skillId || undefined}
-            onChange={setSkillId}
-            allowClear
-            options={skillOptions.map((s) => ({
-              value: s.id,
-              label: s.name,
-            }))}
-            className="w-full"
           />
           <Select
             value={approvalMode}

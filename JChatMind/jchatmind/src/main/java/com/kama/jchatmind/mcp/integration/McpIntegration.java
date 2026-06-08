@@ -18,6 +18,9 @@ public interface McpIntegration {
      */
     List<ToolCallback> getToolsForAgent(List<String> allowedToolNames);
 
+    /** 当前 MCP 桥接中的 shell/终端类工具（execute_command 等），不经过白名单过滤。 */
+    List<ToolCallback> getShellToolCallbacks();
+
     /** 调用历史查询。 */
     List<McpCallResultDTO> getCallHistory(String serverId, String toolName, LocalDateTime since, int limit);
 
