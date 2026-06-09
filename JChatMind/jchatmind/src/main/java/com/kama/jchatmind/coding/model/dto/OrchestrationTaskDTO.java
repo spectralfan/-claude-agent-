@@ -4,10 +4,13 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
-public class CodingSubtaskDTO {
+public class OrchestrationTaskDTO {
+
     private String id;
     private String parentSessionId;
     private String parentTaskId;
@@ -15,14 +18,16 @@ public class CodingSubtaskDTO {
     private String title;
     private String goal;
     private String constraints;
-    private java.util.List<String> contextFiles;
-    private java.util.List<String> dependsOn;
-    private String workerAgentId;
+    private List<String> contextFiles;
+    private List<String> dependsOn;
     private String status;
-    private String resultSummary;
-    private String errorMessage;
     private int depth;
     private String spawnedFromTaskId;
+    private String workerAgentId;
+    private String resultSummary;
+    private String errorMessage;
+    private Map<String, Object> metadata;
     private LocalDateTime createdAt;
+    private LocalDateTime startedAt;
     private LocalDateTime finishedAt;
 }

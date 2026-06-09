@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.coding.mapper.OrchestrationTaskMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.coding.model.entity.OrchestrationTask">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="parentSessionId" column="parent_session_id" jdbcType="VARCHAR"/>
+        <result property="parentCodingTaskId" column="parent_coding_task_id" jdbcType="VARCHAR"/>
+        <result property="role" column="role" jdbcType="VARCHAR"/>
+        <result property="title" column="title" jdbcType="VARCHAR"/>
+        <result property="goal" column="goal" jdbcType="VARCHAR"/>
+        <result property="constraints" column="constraints" jdbcType="VARCHAR"/>
+        <result property="contextFiles" column="context_files" jdbcType="VARCHAR"/>
+        <result property="dependsOn" column="depends_on" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="depth" column="depth" jdbcType="INTEGER"/>
+        <result property="spawnedFromTaskId" column="spawned_from_task_id" jdbcType="VARCHAR"/>
+        <result property="workerAgentId" column="worker_agent_id" jdbcType="VARCHAR"/>
+        <result property="resultSummary" column="result_summary" jdbcType="VARCHAR"/>
+        <result property="errorMessage" column="error_message" jdbcType="VARCHAR"/>
+        <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="startedAt" column="started_at" jdbcType="TIMESTAMP"/>
+        <result property="finishedAt" column="finished_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Select_Column_List">
+        id,
+        parent_session_id,
+        parent_coding_task_id,
+        role,
+        title,
+        goal,
+        constraints,
+        context_files::text AS context_files,
+        depends_on::text AS depends_on,
+        status,
+        depth,
+        spawned_from_task_id,
+        worker_agent_id,
+        result_summary,
+        error_message,
+        metadata::text AS metadata,
+        created_at,
+        started_at,
+        finished_at
+    </sql>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.coding.model.entity.OrchestrationTask"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO t_orchestration_task
+        (parent_session_id,
+         parent_coding_task_id,
+         role,
+         title,
+         goal,
+         constraints,
+         context_files,
+         depends_on,
+         status,
+         depth,
+         spawned_from_task_id,
+         worker_agent_id,
+         result_summary,
+         error_message,
+         metadata,
+         started_at,
+         finished_at)
+        VALUES (CAST(#{parentSessionId} AS uuid),
+                CAST(#{parentCodingTaskId} AS uuid),
+                #{role},
+                #{title},
+                #{goal},
+                #{constraints},
+                CAST(#{contextFiles} AS jsonb),
+                CAST(#{dependsOn} AS jsonb),
+                #{status},
+                #{depth},
+                CAST(#{spawnedFromTaskId} AS uuid),
+                CAST(#{workerAgentId} AS uuid),
+                #{resultSummary},
+                #{errorMessage},
+                CAST(#{metadata} AS jsonb),
+                #{startedAt},
+                #{finishedAt})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_orchestration_task
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <select id="selectByParentSession" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_orchestration_task
+        WHERE parent_session_id = CAST(#{parentSessionId} AS uuid)
+        ORDER BY created_at ASC
+    </select>
+
+    <select id="selectByParentSessionAndStatus" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_orchestration_task
+        WHERE parent_session_id = CAST(#{parentSessionId} AS uuid)
+          AND status = #{status}
+        ORDER BY created_at ASC
+    </select>
+
+    <select id="countRunningByParentSession" resultType="int">
+        SELECT COUNT(*)
+        FROM t_orchestration_task
+        WHERE parent_session_id = CAST(#{parentSessionId} AS uuid)
+          AND status = 'RUNNING'
+    </select>
+
+    <update id="updateStatus" parameterType="com.kama.jchatmind.coding.model.entity.OrchestrationTask">
+        UPDATE t_orchestration_task
+        SET status = #{status},
+            goal = #{goal},
+            constraints = #{constraints},
+            depends_on = CAST(#{dependsOn} AS jsonb),
+            context_files = CAST(#{contextFiles} AS jsonb),
+            result_summary = #{resultSummary},
+            error_message = #{errorMessage},
+            metadata = CAST(#{metadata} AS jsonb),
+            started_at = #{startedAt},
+            finished_at = #{finishedAt}
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+</mapper>

@@ -22,14 +22,22 @@
 - 记忆系统拆分为短期 / 长期（Memory Hub，可选启用）
 - 增加 **AI Coding** 工作台与 **MCP** 外部工具接入
 
-### 更新 2（当前）
+### 更新 2
 
 - **多 Agent 协作**：Orchestrator 编排 + Worker 子 Agent 异步执行
 - **消息窗口修复**：`ToolAwareMessageWindowChatMemory` 按 tool 轮次裁剪，Coding 场景 `memory-window: 80`
 - **仿 Claude Code 全流程**：从自然语言需求到改代码、终端验证、`mark_coding_complete` 交付
 - **Python 依赖管理**：脚手架与 Agent 引导统一使用 **uv**（`uv sync` / `uv run pytest`），MCP 执行终端命令
 - **Windows 友好 MCP Shell**：自建 `jchatmind-shell-mcp.mjs`，经 `mcp-proxy` SSE 桥接，替代不兼容的 bash 类 server
-- **敏感配置外置**：DeepSeek / 智谱 API Key 从环境变量读取（`OPEN_AI_API_KEY`、`ZHIPU_API_KEY`）
+- **敏感配置外置**：DeepSeek / 智谱 API Key 从环境变量读取（`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`）
+
+### 更新 3（当前）
+
+- **MCP 执行链硬化**：`command-runner.mjs` + `McpShellCommandPolicy` + `McpShellArgumentEnricher` 三层防护
+- **结构化验证**：`coding_verify_tools` 优先于 MCP 拼 shell；`append_coding_file` 分块写入防 JSON 截断
+- **Proxy 提前启动**：`McpProxyApplicationContextInitializer`；`GET /api/coding/mcp-health` 自检
+- **编排自动续跑**：`OrchestratorContinuationService` + `coding.subagent.auto-continue`
+- **Graphify 知识图谱**：`graphify-out/` 离线代码图谱，架构查询优先 `query_graph`（Cursor MCP）
 
 ---
 
@@ -44,7 +52,8 @@
 | MCP 工具 | `mcp-proxy` + Spring AI `McpSyncClient`，按白名单注入 Agent | 可配置 |
 | AI Coding | 文件树、Diff、终端输出 SSE、栈 Profile、Skill 注入 | 开启 |
 | Orchestrator / Worker | 编排委派子任务，Worker 独立会话执行 | 开启 |
-| 交付验证 | `mark_coding_complete` 前可要求验证命令 exit 0 | 可配置 |
+| 结构化验证 | `coding_verify_tools` 白名单验证（JS 语法、npm/uv 测试） | Agent 预设已含 |
+| 交付验证 | `mark_coding_complete` 前可要求验证命令 exit 0 | 默认关 |
 
 ---
 
@@ -66,7 +75,8 @@ JChatMindv2/
 ```
 
 详细架构见：`jchatmind/src/main/out/architecture.md`  
-联调指南见：`jchatmind/src/main/out/Coding_Setup.md`
+联调指南见：`jchatmind/src/main/out/Coding_Setup.md`  
+代码知识图谱：`graphify-out/graph.json`（Graphify MCP `query_graph` 查询）
 
 ---
 
@@ -102,6 +112,10 @@ docker exec postgres psql -U postgres -d jchatmind -f /tmp/memory_hub.sql
 # 可选：迁移历史 chat_message
 docker cp JChatMind/jchatmind/src/main/resources/db/memory_hub_migration.sql postgres:/tmp/
 docker exec postgres psql -U postgres -d jchatmind -f /tmp/memory_hub_migration.sql
+
+# 多 Agent DAG 编排表（Scheduler/Worker/Reviewer）
+docker cp JChatMind/jchatmind/src/main/resources/db/orchestration_task.sql postgres:/tmp/
+docker exec postgres psql -U postgres -d jchatmind -f /tmp/orchestration_task.sql
 ```
 
 连接信息（与 `application.yaml` 一致）：`localhost:5432`，用户 `postgres`，密码 `123456`，库 `jchatmind`。
@@ -116,35 +130,39 @@ docker exec postgres psql -U postgres -d jchatmind -f /tmp/memory_hub_migration.
 
 ### 1. 环境变量
 
+在 Windows「系统属性 → 环境变量」设置 **用户或系统** 级 `DEEPSEEK_API_KEY`（`sk-...`）。修改后需**完全重启 IDE**，否则 Java 进程可能读不到。
+
 ```powershell
-$env:OPEN_AI_API_KEY = "sk-..."   # DeepSeek
-$env:ZHIPU_API_KEY = "..."        # 智谱
+# 临时（当前终端）
+$env:DEEPSEEK_API_KEY = "sk-..."
+$env:ZHIPU_API_KEY = "..."
 ```
+
+或使用本地覆盖（已 gitignore）：复制 `application-local.yaml.example` → `application-local.yaml` 并填写 `spring.ai.deepseek.api-key`。
 
 ### 2. 依赖服务
 
 - PostgreSQL（库名 `jchatmind`）
-- 可选：MCP 代理（Coding 终端命令）
+- MCP：默认 `mcp.proxy.auto-start: true`，后端自动拉起 proxy；开发期加 `spring.profiles.active=dev`
 
 ```powershell
-# 启动 MCP（Windows）
+# 手动启动 MCP（调试 proxy 时）
 cd JChatMind/jchatmind/scripts/mcp
 .\start-mcp-proxy.ps1
-```
 
-`application.yaml` 中需开启：
-
-```yaml
-spring.ai.mcp.client.enabled: true
-mcp.enabled: true
+# 健康检查
+Invoke-RestMethod http://localhost:8080/api/coding/mcp-health
 ```
 
 ### 3. 启动后端
 
 ```powershell
 cd JChatMind/jchatmind
-mvn spring-boot:run
+.\scripts\run-backend.ps1   # 推荐：从系统/用户环境变量注入 Key
+# 或 mvn spring-boot:run（需确保当前进程已有 DEEPSEEK_API_KEY）
 ```
+
+启动日志出现 `DeepSeek API Key 已加载` 表示 Key 已注入；若 401 且 key 尾部像 `KEY}`，见 `jchatmind/src/main/out/Coding_Setup.md` §8。
 
 ### 4. 启动前端
 
@@ -159,16 +177,17 @@ npm run dev
 ## MCP 全链路（简述）
 
 ```
-start-mcp-proxy.ps1 (:3000 SSE)
+McpProxyApplicationContextInitializer（提前启动 proxy :3000）
   → Spring AI McpSyncClient
-  → McpToolBridgeImpl（RecordingToolCallback）
-  → McpIntegrationImpl（白名单 + 别名 run_terminal_cmd ↔ execute_command）
+  → RecordingToolCallback → McpShellCommandPolicy → McpShellArgumentEnricher
+  → jchatmind-shell-mcp.mjs → command-runner.mjs
+  → McpIntegrationImpl（白名单 + 别名）
   → JChatMindFactory 注入 Agent
-  → JChatMind reason/act 闭环
-  → CodingMcpOutputBridge → 前端 CODING_COMMAND_OUTPUT SSE
+  → CodingVerifyTools（优先） / MCP 简单命令
+  → CodingMcpOutputBridge → CODING_COMMAND_OUTPUT SSE
 ```
 
-联调诊断：`GET /api/coding/mcp-tools`
+联调诊断：`GET /api/coding/mcp-health`、`GET /api/coding/mcp-tools`
 
 ---
 
@@ -199,17 +218,25 @@ start-mcp-proxy.ps1 (:3000 SSE)
 ## 关键配置摘要
 
 ```yaml
-spring.ai.deepseek.api-key: ${OPEN_AI_API_KEY}
+spring.ai.deepseek.api-key: ${DEEPSEEK_API_KEY}
 spring.ai.zhipuai.api-key: ${ZHIPU_API_KEY}
 
 coding:
   agent:
-    max-loop-steps: 35
+    max-loop-steps: 100
     memory-window: 80
     tool-aware-memory: true
   subagent:
     enabled: true
-    worker-agent-name: Claude Code Coding Agent
+    pool-size: 4
+    auto-continue: true
+  delivery:
+    require-verification: false
+
+mcp:
+  enabled: true
+  proxy:
+    auto-start: true
 ```
 
 ---

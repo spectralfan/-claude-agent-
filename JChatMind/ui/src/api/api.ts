@@ -608,12 +608,18 @@ export interface CodingSubtaskVO {
   id: string;
   parentSessionId: string;
   parentTaskId: string;
+  role?: string;
   title: string;
   goal?: string;
+  constraints?: string;
+  contextFiles?: string[];
+  dependsOn?: string[];
   workerAgentId?: string;
   status: string;
   resultSummary?: string;
   errorMessage?: string;
+  depth?: number;
+  spawnedFromTaskId?: string;
   createdAt?: string;
   finishedAt?: string;
 }

@@ -1,8 +1,8 @@
 # Phase 3 — AI Coding 模块设计
 
 > 上级文档：[architecture.md](./architecture.md)  
-> 状态：**已实现**（Claude Code 工作台 + Orchestrator/Worker + 栈感知验证 + 交付钩子）  
-> 最后更新：2026-06-02
+> 状态：**已实现**（Claude Code 工作台 + Orchestrator/Worker + 结构化验证 + MCP 执行链硬化）  
+> 最后更新：2026-06-08
 
 ---
 
@@ -26,12 +26,14 @@ flowchart LR
     Task[CodingTaskService]
     WS[CodingWorkspaceService]
     Composer[CodingPromptComposer]
-    FileTools[CodingFileTools]
+    FileTools[CodingFileTools + append]
     SearchTools[CodingSearchTools]
+    VerifyTools[CodingVerifyTools]
     Maven[CodingRunTool]
     Complete[CodingCompleteTool]
     Verify[CodingVerificationService]
     Subtask[CodingSubtaskService]
+    OrchCont[OrchestratorContinuationService]
     Skill[CodingSkillService]
     Stack[CodingStackService]
     Rules[ProjectRulesService]
@@ -45,7 +47,8 @@ flowchart LR
   end
 
   subgraph Optional["可选扩展"]
-    MCP[MCP 工具]
+    MCP[MCP + command-runner]
+    Policy[McpShellCommandPolicy]
     Orch[Orchestrator 委派]
   end
 
@@ -53,6 +56,7 @@ flowchart LR
   Composer --> Agent
   FileTools --> Agent
   SearchTools --> Agent
+  VerifyTools --> Agent
   Maven --> Agent
   Complete --> Agent
   Skill --> Composer
@@ -63,7 +67,11 @@ flowchart LR
   Maven --> Notifier
   MCP --> Agent
   Orch --> Subtask
+  OrchCont --> Agent
+  Subtask --> OrchCont
   Maven --> Sandbox
+  VerifyTools --> Sandbox
+  MCP --> Policy
   Verify --> Complete
 ```
 
@@ -105,12 +113,19 @@ coding/
 └── model/entity|dto|enums
 
 agent/tools/coding/
-├── CodingFileTools.java                # coding_file_tools
+├── CodingFileTools.java                # coding_file_tools + append_coding_file
 ├── CodingSearchTools.java              # coding_search_tools
+├── CodingVerifyTools.java              # coding_verify_tools（结构化验证）
 ├── CodingRunTool.java                  # maven_command
 ├── CodingCompleteTool.java             # mark_coding_complete
 ├── DelegateCodingTaskTool.java         # delegate_coding_task
 └── CodingSubtaskQueryTool.java         # coding_subtask_tools
+
+mcp/bootstrap/ + scripts/mcp/
+├── McpProxyApplicationContextInitializer
+├── McpProxyRuntime / McpShellHealthService
+├── command-runner.mjs                  # Shell 执行器 v2.3.1
+└── jchatmind-shell-mcp.mjs
 
 resources/
 ├── coding-skills/*.json
@@ -142,9 +157,9 @@ sequenceDiagram
   Chat->>L: ChatEvent（@Async）
   L->>L: CodingSessionContext + @file enrich
   L->>A: Factory.create（Composer 注入 Prompt）
-  loop Agent Loop（max 35 steps）
+  loop Agent Loop（max coding.agent.max-loop-steps，默认 100）
     A->>A: reason → act → observe
-    A->>A: coding_file_tools / search / maven / MCP / mark_coding_complete
+    A->>A: verify_tools 优先 → file/search → maven/MCP → mark_coding_complete
   end
 ```
 
@@ -166,13 +181,14 @@ sequenceDiagram
   Worker->>Worker: 共享父任务工作区开发
   Exec->>SSE: CODING_SUBTASK_COMPLETED/FAILED
   Parent->>Parent: get_coding_subtask_status 轮询
+  Note over Parent: 全部子任务完成后 OrchestratorContinuationService 自动续跑
 ```
 
-**循环依赖处理**：`CodingSubtaskExecutorImpl` 对 `JChatMindFactory` 使用 `@Lazy` 注入。
+**循环依赖处理**：`CodingSubtaskExecutorImpl` 对 `JChatMindFactory` 使用 `@Lazy` 注入；子任务跑在 `codingExecutor` 专用池（`pool-size: 4`）。
 
 ### 4.3 文件写入 → 前端 Diff + 验证失效
 
-1. Agent 调用 `write_coding_file` 或 `apply_coding_patch`
+1. Agent 调用 `write_coding_file`、`append_coding_file` 或 `apply_coding_patch`（大 HTML/JS 须分块，单次 <8KB）
 2. 写入 → SSE `CODING_FILE_CHANGED`（含 old/new 摘要）
 3. `CodingVerificationService.invalidate(taskId)` — 改代码后须重新验证
 4. `CodingView` 刷新文件树、打开 Diff Tab
@@ -181,9 +197,10 @@ sequenceDiagram
 
 | 来源 | 成功 exit 0 时 |
 |------|----------------|
+| **`coding_verify_tools`**（优先） | `CodingVerifyTools` → `recordSuccess` |
 | `maven_command` / `POST run-maven` | `CodingCommandService` → `recordSuccess` |
 | `POST run-shell` | 同上 |
-| MCP 终端工具 | `CodingMcpOutputBridge` → `recordSuccess` |
+| MCP 终端工具 | `CodingMcpOutputBridge` → `recordSuccess`（经 Policy + command-runner） |
 
 需审批的 Maven → `WAITING_APPROVAL` + SSE `CODING_APPROVAL_REQUIRED` → 底部审批条。
 

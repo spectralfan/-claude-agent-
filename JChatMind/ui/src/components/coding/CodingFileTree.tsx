@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Tree, Spin, Typography } from "antd";
+import { Tree, Spin } from "antd";
 import type { DataNode, EventDataNode } from "antd/es/tree";
 import { FileOutlined, FolderOutlined } from "@ant-design/icons";
 import { getCodingTaskTree, type FileNodeVO } from "../../api/api.ts";
-
-const { Text } = Typography;
 
 interface CodingFileTreeProps {
   taskId: string;
@@ -76,13 +74,8 @@ const CodingFileTree: React.FC<CodingFileTreeProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col border-r border-gray-200 bg-gray-50">
-      <div className="px-3 py-2 border-b border-gray-200 shrink-0">
-        <Text strong className="text-sm">
-          文件
-        </Text>
-      </div>
-      <div className="flex-1 overflow-auto p-2">
+    <div className="h-full flex flex-col bg-gray-50 min-h-0">
+      <div className="flex-1 overflow-auto p-2 min-h-0">
         {loading ? (
           <div className="flex justify-center py-8">
             <Spin size="small" />

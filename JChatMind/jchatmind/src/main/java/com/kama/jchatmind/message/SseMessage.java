@@ -38,6 +38,10 @@ public class SseMessage {
         private String changeType;
         private String oldContent;
         private String newContent;
+        /** 编排任务角色 WORKER | REVIEWER */
+        private String role;
+        /** 依赖任务 ID，逗号分隔 */
+        private String dependsOn;
     }
 
     @Data

@@ -6,17 +6,19 @@ import com.kama.jchatmind.coding.config.CodingSubagentProperties;
 import com.kama.jchatmind.coding.context.CodingSessionContext;
 import com.kama.jchatmind.coding.context.SubAgentRunContext;
 import com.kama.jchatmind.coding.model.dto.CodingAgentPresetDTO;
-import com.kama.jchatmind.coding.model.dto.CodingSubtaskDTO;
+import com.kama.jchatmind.coding.model.dto.OrchestrationTaskDTO;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
+import com.kama.jchatmind.coding.model.enums.OrchestrationTaskRole;
 import com.kama.jchatmind.coding.service.CodingAgentPresetService;
-import com.kama.jchatmind.coding.service.CodingSubtaskExecutor;
-import com.kama.jchatmind.coding.service.CodingSubtaskService;
 import com.kama.jchatmind.coding.service.CodingTaskService;
+import com.kama.jchatmind.coding.service.OrchestrationTaskService;
 import com.kama.jchatmind.mapper.AgentMapper;
 import com.kama.jchatmind.model.entity.Agent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Slf4j
 @Component
@@ -24,8 +26,7 @@ import org.springframework.stereotype.Component;
 public class DelegateCodingTaskTool implements Tool {
 
     private final CodingSubagentProperties subagentProperties;
-    private final CodingSubtaskService codingSubtaskService;
-    private final CodingSubtaskExecutor codingSubtaskExecutor;
+    private final OrchestrationTaskService orchestrationTaskService;
     private final CodingTaskService codingTaskService;
     private final CodingAgentPresetService codingAgentPresetService;
     private final AgentMapper agentMapper;
@@ -37,7 +38,7 @@ public class DelegateCodingTaskTool implements Tool {
 
     @Override
     public String getDescription() {
-        return "将 Coding 子目标异步委派给 Worker Agent，立即返回 subTaskId";
+        return "（兼容）将 Coding 子目标异步委派给 Worker，等价 create_orchestration_task(role=WORKER)";
     }
 
     @Override
@@ -47,9 +48,9 @@ public class DelegateCodingTaskTool implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(
             name = "delegate_coding_task",
-            description = "将具体开发子任务委派给后台 Worker Agent 异步执行。"
+            description = "将具体开发子任务委派给后台 Worker Agent 异步执行（兼容层）。"
                     + "goal 须为可独立完成的子目标（含验收标准）。"
-                    + "返回 subTaskId 后请用 get_coding_subtask_status 轮询直至 COMPLETED/FAILED。"
+                    + "返回 taskId 后请用 list_orchestration_tasks 轮询直至 COMPLETED/FAILED。"
     )
     public String delegateCodingTask(String goal, String title) {
         if (!subagentProperties.isEnabled()) {
@@ -74,19 +75,25 @@ public class DelegateCodingTaskTool implements Tool {
             return "错误：未找到 Worker Agent（" + subagentProperties.getWorkerAgentName() + "）";
         }
 
-        CodingSubtaskDTO subtask = codingSubtaskService.create(
+        OrchestrationTaskDTO created = orchestrationTaskService.create(
                 ctx.sessionId(),
                 task.getId(),
+                OrchestrationTaskRole.WORKER,
+                title != null && !title.isBlank() ? title : "Worker 任务",
+                goal.trim(),
+                null,
+                List.of(),
+                List.of(),
                 workerAgentId,
-                title,
-                goal.trim()
+                1,
+                null,
+                null
         );
-        codingSubtaskExecutor.execute(subtask);
-        return "子任务已异步启动。"
-                + " subTaskId=" + subtask.getId()
-                + " status=RUNNING"
-                + " title=" + subtask.getTitle()
-                + "。请使用 get_coding_subtask_status 查询进度。";
+        return "子任务已创建（由 Dispatcher 异步执行）。"
+                + " taskId=" + created.getId()
+                + " status=" + created.getStatus()
+                + " title=" + created.getTitle()
+                + "。请使用 list_orchestration_tasks 查询进度。";
     }
 
     private String resolveWorkerAgentId() {

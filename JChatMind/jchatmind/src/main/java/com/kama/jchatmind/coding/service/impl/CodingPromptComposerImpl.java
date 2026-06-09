@@ -2,17 +2,26 @@ package com.kama.jchatmind.coding.service.impl;
 
 import com.kama.jchatmind.coding.CodingAgentRoles;
 import com.kama.jchatmind.coding.config.CodingProperties;
+import com.kama.jchatmind.coding.config.OrchestrationProperties;
 import com.kama.jchatmind.model.dto.AgentDTO;
 import com.kama.jchatmind.coding.model.dto.CodingStackDTO;
 import com.kama.jchatmind.coding.model.dto.CodingTaskMetadata;
+import com.kama.jchatmind.coding.model.dto.OrchestrationTaskSpec;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
+import com.kama.jchatmind.coding.model.enums.OrchestrationTaskRole;
 import com.kama.jchatmind.coding.service.CodingPromptComposer;
 import com.kama.jchatmind.coding.service.CodingSkillService;
 import com.kama.jchatmind.coding.service.CodingStackService;
 import com.kama.jchatmind.coding.service.CodingTaskService;
+import com.kama.jchatmind.coding.service.CodingWorkspaceService;
 import com.kama.jchatmind.coding.service.ProjectRulesService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +32,8 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
     private final CodingProperties codingProperties;
     private final CodingSkillService codingSkillService;
     private final CodingStackService codingStackService;
+    private final CodingWorkspaceService codingWorkspaceService;
+    private final OrchestrationProperties orchestrationProperties;
 
     @Override
     public String composeSystemPrompt(String basePrompt, String taskSessionId, AgentDTO agentConfig) {
@@ -43,8 +54,8 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
         prompt = projectRulesService.getRulesForTask(task)
                 .map(rules -> beforeRules + "\n\n## 项目规则\n" + rules)
                 .orElse(beforeRules);
-        if (CodingAgentRoles.isOrchestrator(agentConfig)) {
-            return prompt + buildOrchestratorContextBlock(task);
+        if (CodingAgentRoles.isOrchestrator(agentConfig) || CodingAgentRoles.isScheduler(agentConfig)) {
+            return prompt + buildSchedulerContextBlock(task);
         }
         prompt = appendSkillPrompt(prompt, task);
         return prompt + buildCodingAutonomousBlock(task);
@@ -70,19 +81,85 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
                 .orElse(prompt);
     }
 
-    private String buildOrchestratorContextBlock(CodingTask task) {
+    @Override
+    public String composeRolePrompt(OrchestrationTaskSpec spec, AgentDTO agentConfig) {
+        String base = agentConfig.getSystemPrompt() != null ? agentConfig.getSystemPrompt() : "";
+        CodingTask parentTask = codingTaskService.getActiveTask(spec.getParentSessionId());
+        StringBuilder sb = new StringBuilder(base);
+
+        sb.append("\n\n## 编排子任务\n");
+        sb.append("- taskId: ").append(spec.getTaskId()).append('\n');
+        sb.append("- role: ").append(spec.getRole().getCode()).append('\n');
+        sb.append("- title: ").append(spec.getTitle()).append('\n');
+        if (parentTask != null) {
+            sb.append("- 工作区根: ").append(parentTask.getWorkspaceRoot() != null
+                    ? parentTask.getWorkspaceRoot() : "(默认)").append('\n');
+            sb.append("- 子路径: ").append(parentTask.getWorkspacePath() != null
+                    ? parentTask.getWorkspacePath() : ".").append('\n');
+            if (spec.getRole() == OrchestrationTaskRole.WORKER) {
+                sb.append(buildCodingAutonomousBlock(parentTask));
+            }
+        }
+
+        sb.append("\n## 任务目标\n").append(spec.getGoal()).append('\n');
+        if (spec.getConstraints() != null && !spec.getConstraints().isBlank()) {
+            sb.append("\n## 约束\n").append(spec.getConstraints()).append('\n');
+        }
+        sb.append(buildContextFilesBlock(parentTask, spec.getContextFiles()));
+        return sb.toString();
+    }
+
+    private String buildContextFilesBlock(CodingTask task, List<String> contextFiles) {
+        if (contextFiles == null || contextFiles.isEmpty() || task == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("\n## 上下文文件\n");
+        Path base = codingWorkspaceService.resolveForTask(task);
+        int maxBytes = orchestrationProperties.getReadMaxBytes();
+        for (String rel : contextFiles) {
+            if (rel == null || rel.isBlank()) {
+                continue;
+            }
+            try {
+                Path target = base.resolve(rel).normalize();
+                if (!codingWorkspaceService.isPathSafe(base, target)) {
+                    sb.append("<file path=\"").append(rel).append("\" error=\"路径越界\"/>\n");
+                    continue;
+                }
+                if (!Files.exists(target) || !Files.isRegularFile(target)) {
+                    sb.append("<file path=\"").append(rel).append("\" error=\"不存在\"/>\n");
+                    continue;
+                }
+                byte[] bytes = Files.readAllBytes(target);
+                boolean truncated = bytes.length > maxBytes;
+                String content = new String(
+                        truncated ? java.util.Arrays.copyOf(bytes, maxBytes) : bytes,
+                        StandardCharsets.UTF_8);
+                sb.append("<file path=\"").append(rel).append("\" truncated=\"")
+                        .append(truncated).append("\">\n");
+                sb.append(content).append("\n</file>\n");
+            } catch (Exception e) {
+                sb.append("<file path=\"").append(rel).append("\" error=\"")
+                        .append(e.getMessage()).append("\"/>\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private String buildSchedulerContextBlock(CodingTask task) {
         return """
 
-                ## Coding 任务上下文（编排模式）
+                ## Coding 任务上下文（Scheduler 编排模式）
                 - taskId: %s
                 - 工作区根: %s
                 - 子路径: %s
 
                 ## 编排协议（严禁违反）
-                1. **你只负责编排**：禁止改代码、禁止调用 coding_file_tools / coding_search_tools / run_terminal_cmd / bash / maven_command / mark_coding_complete
-                2. 用 delegate_coding_task(goal, title) 将每个可验收子目标委派给 Worker
-                3. 用 get_coding_subtask_status 轮询；status=FAILED 时阅读 errorMessage，修正 goal 后**重新委派**，不得亲自执行开发或验证
-                4. 所有子任务 COMPLETED 后，向用户汇总完成了什么、如何验证
+                1. **你只负责调度**：禁止改代码；可用 orchestration_read_tools 只读查看
+                2. 用 create_orchestration_task 创建 WORKER/REVIEWER 任务，规划 dependsOn 依赖
+                3. 用 list_orchestration_tasks 轮询；FAILED 时阅读 errorMessage 后 update 或新建任务
+                4. delegate_coding_task 等价创建 WORKER 任务（兼容旧流程）
+                5. 全部任务终态后向用户汇总；最终调用 mark_coding_complete
                 """.formatted(
                 task.getId(),
                 task.getWorkspaceRoot() != null ? task.getWorkspaceRoot() : "(默认)",

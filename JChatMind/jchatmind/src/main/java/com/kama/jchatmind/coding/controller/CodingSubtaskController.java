@@ -40,6 +40,13 @@ public class CodingSubtaskController {
         return ApiResponse.success(codingSubtaskService.listByParentSession(sessionId));
     }
 
+    /** DAG 编排任务列表（含 role、dependsOn） */
+    @GetMapping("/orchestration/tasks")
+    public ApiResponse<List<CodingSubtaskDTO>> listOrchestrationTasks(
+            @org.springframework.web.bind.annotation.RequestParam String sessionId) {
+        return ApiResponse.success(codingSubtaskService.listByParentSession(sessionId));
+    }
+
     @GetMapping("/runtime-status")
     public ApiResponse<CodingRuntimeStatusDTO> runtimeStatus() {
         return ApiResponse.success(CodingRuntimeStatusDTO.builder()

@@ -1,0 +1,9 @@
+# 本地开发用（勿提交仓库）。复制为以下任一位置并填写真实 Key：
+#   - jchatmind/application-local.yaml（与 pom.xml 同级，推荐）
+#   - src/main/resources/application-local.yaml（仅本机，勿 git add）
+spring:
+  ai:
+    deepseek:
+      api-key: sk-your-deepseek-key-here
+    zhipuai:
+      api-key: your-zhipu-key-here

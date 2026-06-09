@@ -9,6 +9,7 @@ import com.kama.jchatmind.converter.KnowledgeBaseConverter;
 import com.kama.jchatmind.coding.CodingAgentRoles;
 import com.kama.jchatmind.coding.config.CodingProperties;
 import com.kama.jchatmind.coding.config.CodingSubagentProperties;
+import com.kama.jchatmind.coding.model.dto.OrchestrationTaskSpec;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
 import com.kama.jchatmind.coding.service.CodingTaskService;
 import com.kama.jchatmind.coding.service.CodingPromptComposer;
@@ -304,17 +305,56 @@ public class JChatMindFactory {
             String taskSessionId,
             boolean subAgent
     ) {
+        return buildJChatMindInstance(
+                agent,
+                buildSystemPromptWithRules(agent.getSystemPrompt(), taskSessionId),
+                memory,
+                knowledgeBases,
+                toolCallbacks,
+                chatSessionId,
+                taskSessionId,
+                subAgent
+        );
+    }
+
+    private JChatMind buildAgentRuntimeWithCustomSystem(
+            Agent agent,
+            String systemPrompt,
+            List<Message> memory,
+            List<KnowledgeBaseDTO> knowledgeBases,
+            List<ToolCallback> toolCallbacks,
+            String chatSessionId,
+            String taskSessionId,
+            boolean subAgent
+    ) {
+        return buildJChatMindInstance(
+                agent, systemPrompt, memory, knowledgeBases, toolCallbacks,
+                chatSessionId, taskSessionId, subAgent
+        );
+    }
+
+    private JChatMind buildJChatMindInstance(
+            Agent agent,
+            String systemPrompt,
+            List<Message> memory,
+            List<KnowledgeBaseDTO> knowledgeBases,
+            List<ToolCallback> toolCallbacks,
+            String chatSessionId,
+            String taskSessionId,
+            boolean subAgent
+    ) {
         ChatClient chatClient = chatClientRegistry.get(agent.getModel());
         if (Objects.isNull(chatClient)) {
             throw new IllegalStateException("未找到对应的 ChatClient: " + agent.getModel());
         }
         int memoryWindow = resolveMemoryWindow(taskSessionId, agentConfig, subAgent);
-        McpToolBridge bridgeForResolver = CodingAgentRoles.isOrchestrator(agentConfig) ? null : mcpToolBridge;
+        McpToolBridge bridgeForResolver = CodingAgentRoles.isOrchestrator(agentConfig)
+                || CodingAgentRoles.isReviewer(agentConfig) ? null : mcpToolBridge;
         return new JChatMind(
                 agent.getId(),
                 agent.getName(),
                 agent.getDescription(),
-                buildSystemPromptWithRules(agent.getSystemPrompt(), taskSessionId),
+                systemPrompt,
                 chatClient,
                 memoryWindow,
                 codingProperties.getAgent().isToolAwareMemory(),
@@ -403,7 +443,8 @@ public class JChatMindFactory {
         memory.add(new UserMessage(goal));
 
         List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
-        List<Tool> runtimeTools = filterWorkerTools(resolveRuntimeTools(agentConfig));
+        List<Tool> runtimeTools = CodingAgentRoles.filterToolsByRole(
+                resolveRuntimeTools(agentConfig), CodingAgentRoles.AgentRole.WORKER);
         List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
 
         injectMcpToolCallbacks(toolCallbacks, agentConfig, parentSessionId, workerAgentId);
@@ -417,6 +458,37 @@ public class JChatMindFactory {
     }
 
     /**
+     * 按编排角色创建子 Agent：memory 仅 SystemMessage(rolePrompt) + UserMessage("开始执行")。
+     */
+    public JChatMind createRoleAgent(OrchestrationTaskSpec spec, String subSessionId) {
+        Agent agent = loadAgent(spec.getAgentId());
+        AgentDTO agentConfig = toAgentConfig(agent);
+        String rolePrompt = codingPromptComposer.composeRolePrompt(spec, agentConfig);
+        List<Message> memory = new ArrayList<>();
+        memory.add(new SystemMessage(rolePrompt));
+        memory.add(new UserMessage("开始执行"));
+
+        CodingAgentRoles.AgentRole role = CodingAgentRoles.resolveRole(agentConfig);
+        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
+        List<Tool> runtimeTools = CodingAgentRoles.filterToolsByRole(resolveRuntimeTools(agentConfig), role);
+        List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
+
+        injectMcpToolCallbacks(toolCallbacks, agentConfig, spec.getParentSessionId(), spec.getAgentId());
+        JChatMind jChatMind = buildAgentRuntimeWithCustomSystem(
+                agent,
+                rolePrompt,
+                memory,
+                knowledgeBases,
+                toolCallbacks,
+                subSessionId,
+                spec.getParentSessionId(),
+                true);
+        jChatMind.setEventSessionId(spec.getParentSessionId());
+        jChatMind.setMaxSteps(codingSubagentProperties.getMaxLoopSteps());
+        return jChatMind;
+    }
+
+    /**
      * Coding Worker 会话内注入 MCP shell 工具。
      * Orchestrator 仅委派，不得获得终端工具（避免 Worker 失败后父 Agent 亲自改代码）。
      */
@@ -424,7 +496,9 @@ public class JChatMindFactory {
                                         AgentDTO agentConfig,
                                         String sessionId,
                                         String agentId) {
-        if (!mcpProperties.isEnabled() || CodingAgentRoles.isOrchestrator(agentConfig)) {
+        if (!mcpProperties.isEnabled()
+                || CodingAgentRoles.isOrchestrator(agentConfig)
+                || CodingAgentRoles.isReviewer(agentConfig)) {
             return;
         }
         try {
@@ -463,7 +537,8 @@ public class JChatMindFactory {
                 ? new ArrayList<>(agentConfig.getAllowedTools())
                 : new ArrayList<>();
         if (codingTaskService.getActiveTask(sessionId) != null
-                && !CodingAgentRoles.isOrchestrator(agentConfig)) {
+                && !CodingAgentRoles.isOrchestrator(agentConfig)
+                && !CodingAgentRoles.isReviewer(agentConfig)) {
             for (String terminal : McpToolAliasRegistry.TERMINAL_TOOL_NAMES) {
                 if (!allowed.contains(terminal)) {
                     allowed.add(terminal);
@@ -471,16 +546,6 @@ public class JChatMindFactory {
             }
         }
         return allowed;
-    }
-
-    private List<Tool> filterWorkerTools(List<Tool> tools) {
-        Set<String> blocked = Set.of(
-                "delegate_coding_task",
-                "coding_subtask_tools"
-        );
-        return tools.stream()
-                .filter(t -> !blocked.contains(t.getName()))
-                .toList();
     }
 
     private JChatMind buildAgentRuntimeWithCodingSteps(

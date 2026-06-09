@@ -1,6 +1,8 @@
 spring:
   application:
     name: jchatmind
+  config:
+    import: optional:classpath:application-local.yaml,optional:file:./application-local.yaml
   main:
     allow-circular-references: true
   datasource:
@@ -23,7 +25,7 @@ spring:
             required: true
   ai:
     deepseek:
-      api-key: ${OPEN_AI_API_KEY}
+      api-key: ${DEEPSEEK_API_KEY}
       base-url: https://api.deepseek.com
       chat:
         options:
@@ -167,6 +169,18 @@ coding:
     enabled: true
   orchestrator-preset:
     enabled: true
+  reviewer-preset:
+    enabled: true
+  orchestration:
+    max-depth: 1
+    max-concurrency: 4
+    auto-review: true
+    auto-review-depends: true
+    dispatch-interval-ms: 2000
+    read-max-bytes: 524288
+    shell-output-max-chars: 65536
+    list-dir-default-depth: 2
+    list-dir-max-depth: 5
   subagent:
     enabled: true
     worker-agent-name: Claude Code Coding Agent

@@ -26,7 +26,6 @@ import {
   approveCodingTask,
   createChatMessage,
   createChatSession,
-  createCodingTask,
   detectCodingWorkspace,
   getChatMessagesBySessionId,
   getActiveCodingTask,
@@ -63,6 +62,7 @@ import CodingTerminalPanel, {
 } from "../coding/CodingTerminalPanel.tsx";
 import CodingCompletionCard from "../coding/CodingCompletionCard.tsx";
 import CodingSubtaskPanel from "../coding/CodingSubtaskPanel.tsx";
+import CodingWorkspaceLayout from "../coding/CodingWorkspaceLayout.tsx";
 import { useSessionSse } from "../../hooks/useSessionSse.ts";
 
 type CodingAgentRole = "orchestrator" | "worker";
@@ -130,7 +130,8 @@ const CodingView: React.FC = () => {
   const [approving, setApproving] = useState(false);
 
   const [logs, setLogs] = useState<TerminalLogEntry[]>([]);
-  const [terminalCollapsed, setTerminalCollapsed] = useState(false);
+  const [terminalCollapsed, setTerminalCollapsed] = useState(true);
+  const [codePanelWidth, setCodePanelWidth] = useState(320);
   const [messages, setMessages] = useState<ChatMessageVO[]>([]);
   const [displayAgentStatus, setDisplayAgentStatus] = useState(false);
   const [agentStatusText, setAgentStatusText] = useState("");
@@ -782,10 +783,11 @@ const CodingView: React.FC = () => {
         </div>
       )}
 
-      {/* 三栏主区域 */}
-      <div className="flex-1 flex min-h-0">
-        <div className="w-56 shrink-0 min-h-0">
-          {task ? (
+      {/* 三栏主区域：可拖拽分栏，默认对话区更宽 */}
+      <CodingWorkspaceLayout
+        onCodeWidthChange={setCodePanelWidth}
+        fileTree={
+          task ? (
             <CodingFileTree
               taskId={task.id}
               selectedPath={selectedFilePath}
@@ -796,70 +798,70 @@ const CodingView: React.FC = () => {
             <div className="p-3 text-xs text-gray-400">
               发送首条任务消息后显示文件树
             </div>
-          )}
-        </div>
-        <div className="flex-1 min-w-0 min-h-0">
-          {task ? (
+          )
+        }
+        codePreview={
+          task ? (
             <CodingFilePreview
               taskId={task.id}
               filePath={selectedFilePath}
               diff={fileDiff}
               stackLanguage={task.language}
+              panelWidth={codePanelWidth}
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+            <div className="flex items-center justify-center h-full text-gray-400 text-sm px-4 text-center">
               描述你的开发目标，Agent 将自动创建任务并开始编排
             </div>
-          )}
-        </div>
-        <div className="w-[380px] shrink-0 flex flex-col min-h-0 border-l border-gray-200">
-          <div className="px-3 py-2 border-b border-gray-100 shrink-0">
-            <Text strong className="text-sm">
-              Agent 对话
-            </Text>
-            <Alert
-              type="info"
-              showIcon={false}
-              banner
-              className="mt-2 py-1"
-              message="Claude Code 模式：选定工作区后直接对话；技术栈自动识别，可用 @文件 引用"
+          )
+        }
+        chat={
+          <div className="h-full flex flex-col min-h-0 min-w-0">
+            <div className="px-3 py-1.5 border-b border-gray-100 shrink-0">
+              <Text strong className="text-sm">
+                Agent 对话
+              </Text>
+              <Text type="secondary" className="text-xs block truncate">
+                直接对话 · 技术栈自动识别 · 可用 @文件 引用
+              </Text>
+            </div>
+            <CodingSubtaskPanel
+              sessionId={sessionId}
+              refreshToken={subtaskRefreshToken}
             />
-          </div>
-          <CodingSubtaskPanel
-            sessionId={sessionId}
-            refreshToken={subtaskRefreshToken}
-          />
-          {taskSummary && task?.status === "COMPLETED" && (
-            <CodingCompletionCard
-              summary={taskSummary}
-              onOpenFile={(path) => {
-                setSelectedFilePath(path);
-                setFileDiff(null);
-              }}
-            />
-          )}
-          <div className="flex-1 min-h-0 flex flex-col">
-            <AgentChatHistory
-              messages={messages}
-              displayAgentStatus={displayAgentStatus}
-              agentStatusText={agentStatusText}
-              agentStatusType={agentStatusType}
-            />
-            <div className="border-t border-gray-200 p-3 bg-white shrink-0">
-              <CodingChatInput
-                onSend={handleChatSend}
-                selectedFilePath={selectedFilePath}
-                disabled={chatSending}
+            {taskSummary && task?.status === "COMPLETED" && (
+              <CodingCompletionCard
+                summary={taskSummary}
+                onOpenFile={(path) => {
+                  setSelectedFilePath(path);
+                  setFileDiff(null);
+                }}
               />
-              {chatSending && (
-                <Text type="secondary" className="text-xs mt-1 block">
-                  Agent 处理中…
-                </Text>
-              )}
+            )}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <AgentChatHistory
+                messages={messages}
+                displayAgentStatus={displayAgentStatus}
+                agentStatusText={agentStatusText}
+                agentStatusType={agentStatusType}
+                compact
+              />
+              <div className="border-t border-gray-200 p-2 bg-white shrink-0">
+                <CodingChatInput
+                  onSend={handleChatSend}
+                  selectedFilePath={selectedFilePath}
+                  disabled={chatSending}
+                />
+                {chatSending && (
+                  <Text type="secondary" className="text-xs mt-1 block">
+                    Agent 处理中…
+                  </Text>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <CodingTerminalPanel
         logs={logs}

@@ -15,6 +15,8 @@ interface AgentChatHistoryProps {
   displayAgentStatus?: boolean;
   agentStatusText?: string;
   agentStatusType?: SseMessageType;
+  /** Coding 工作台窄栏：减少水平留白 */
+  compact?: boolean;
 }
 
 // 工具调用展示组件（简化版，用于 assistant 消息内）
@@ -106,6 +108,7 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   displayAgentStatus = false,
   agentStatusText = "",
   agentStatusType,
+  compact = false,
 }) => {
   // 滚动容器引用
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -198,9 +201,11 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   };
 
   return (
-    <div 
+    <div
       ref={scrollContainerRef}
-      className="flex-1 px-16 pt-4 overflow-y-scroll"
+      className={`flex-1 min-h-0 pt-3 overflow-y-auto ${
+        compact ? "px-3" : "px-16"
+      }`}
     >
       {messages.map((message) => {
         return (
@@ -238,7 +243,7 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
             {/* Tool 消息 - 简洁展示，不使用气泡 */}
             {message.role === "tool" && message.metadata?.toolResponse && (
               <div className="flex justify-start">
-                <div className="max-w-[85%]">
+                <div className={compact ? "max-w-[95%]" : "max-w-[85%]"}>
                   <ToolResponseDisplay toolResponse={message.metadata.toolResponse} />
                 </div>
               </div>
