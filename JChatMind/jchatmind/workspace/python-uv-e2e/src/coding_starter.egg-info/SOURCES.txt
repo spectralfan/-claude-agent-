@@ -1,0 +1,8 @@
+pyproject.toml
+src/coding_starter.egg-info/PKG-INFO
+src/coding_starter.egg-info/SOURCES.txt
+src/coding_starter.egg-info/dependency_links.txt
+src/coding_starter.egg-info/top_level.txt
+src/todo/__init__.py
+src/todo/app.py
+tests/test_todo.py

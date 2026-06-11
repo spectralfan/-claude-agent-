@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: coding-starter
+Version: 0.1.0
+Summary: JChatMind Python pytest starter
+Requires-Python: >=3.10

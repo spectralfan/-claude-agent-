@@ -6,7 +6,7 @@
   "scaffoldTemplate": "python-pytest",
   "skillId": "python-autonomous-dev",
   "suggestedMcpTools": ["run_terminal_cmd"],
-  "verifyWorkflow": "改代码后优先 run_allowed_verify(\"uv run pytest -q\")；失败则读输出修复再测",
+  "verifyWorkflow": "list_stack_verify_commands → run_stack_verify(\"uv run pytest -q\")；失败则读输出修复再测",
   "doneCriteria": "uv run pytest exit 0",
   "suggestedAgentTools": ["coding_file_tools", "coding_verify_tools", "run_terminal_cmd"],
   "verifyCommands": [

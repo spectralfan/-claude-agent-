@@ -21,6 +21,7 @@ import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
+import com.kama.jchatmind.coding.context.SchedulerRunContext;
 import com.kama.jchatmind.mcp.bridge.AliasAwareToolCallbackResolver;
 import com.kama.jchatmind.mcp.bridge.McpToolAliasRegistry;
 import com.kama.jchatmind.mcp.bridge.McpToolBridge;
@@ -77,6 +78,9 @@ public class JChatMind {
 
     // 最多循环次数
     private int maxSteps = MAX_STEPS;
+
+    /** Coding Scheduler/Orchestrator：建图后勿 list 轮询 */
+    private boolean schedulerMode;
 
     private static final Integer MAX_STEPS = 20;
 
@@ -335,6 +339,10 @@ public class JChatMind {
         if (this.chatEventPublisher == null) {
             return;
         }
+        // 子 Agent 的推理阶段 SSE 不推到父会话，避免父界面长期显示「第 1 轮推理中」
+        if (eventSessionId != null && !eventSessionId.equals(chatSessionId)) {
+            return;
+        }
         this.chatEventPublisher.publish(resolveEventSessionId(), SseMessage.builder()
                 .type(type)
                 .payload(SseMessage.Payload.builder()
@@ -357,18 +365,33 @@ public class JChatMind {
      * @return 若模型请求工具调用则返回 true，否则表示任务在本轮结束
      */
     private boolean reason() {
+        String kbSection = (this.availableKbs == null || this.availableKbs.isEmpty())
+                ? ""
+                : """
+
+                【额外信息】
+                - 你目前拥有的知识库列表以及描述：%s
+                - 如果有缺失的上下文时，优先从知识库中进行搜索
+                """.formatted(this.availableKbs);
+        String schedulerSection = this.schedulerMode
+                ? """
+
+                【Scheduler 调度规则（优先于通用规则）】
+                - 大需求先拆成多个 WORKER：同一轮可多个 create_orchestration_task，无依赖则并行
+                - 全部 create 完成后再用文字告知用户「已委派」并结束本轮；**禁止** list 轮询
+                - 仅在 [系统自动继续] 或用户追问、需处理失败/审查时，才可 list 一次
+                """
+                : "";
         String reasonPrompt =
                 """
                 你处于 Agent「推理 → 工具调用 → 结果观察 → 继续推理」闭环的【推理】阶段。
                 请根据当前对话上下文（含上一轮工具返回的观察结果）：
                 1. 简要分析当前进展与尚未完成的部分
-                2. 若仍需信息或操作，调用相应工具（可连续多步，勿中途停下来等用户再发消息）
-                3. 若已满足用户的完整请求，直接给出最终回复，不要再调用工具
-                4. 缺少必要信息时优先调用工具获取，不要向用户追问
-                【额外信息】
-                - 你目前拥有的知识库列表以及描述：%s
-                - 如果有缺失的上下文时，优先从知识库中进行搜索
-                """.formatted(this.availableKbs);
+                2. 若仍需信息或操作，调用相应工具；**同一轮可同时返回多个 tool_calls**（如批量读文件+列目录树），独立操作尽量合并到一轮，勿分多轮重复探索
+                3. 可连续多步推理与工具调用，勿中途停下来等用户再发消息
+                4. 若已满足用户的完整请求，直接给出最终回复，不要再调用工具
+                5. 缺少必要信息时优先调用工具获取，不要向用户追问%s%s
+                """.formatted(kbSection, schedulerSection);
 
         Prompt prompt = Prompt.builder()
                 .chatOptions(this.chatOptions)
@@ -521,6 +544,13 @@ public class JChatMind {
             this.agentState = AgentState.FINISHED;
             log.info("任务结束");
         }
+        if (this.schedulerMode && toolResponseMessage.getResponses().stream().anyMatch(
+                resp -> "list_orchestration_tasks".equals(resp.name())
+                        && resp.responseData() != null
+                        && resp.responseData().contains("禁止重复"))) {
+            this.agentState = AgentState.FINISHED;
+            log.info("Scheduler 重复 list 被拦截，结束本轮");
+        }
     }
 
     private String formatActStatus(List<AssistantMessage.ToolCall> toolCalls) {
@@ -559,12 +589,20 @@ public class JChatMind {
         }
     }
 
+    public void setSchedulerMode(boolean schedulerMode) {
+        this.schedulerMode = schedulerMode;
+    }
+
     // 运行
     public void run() {
         if (agentState != AgentState.IDLE) {
             throw new IllegalStateException("Agent is not idle");
         }
 
+        boolean schedulerRun = this.schedulerMode;
+        if (schedulerRun) {
+            SchedulerRunContext.begin();
+        }
         try {
             this.agentState = AgentState.PLANNING;
             emitAgentPhase(SseMessage.Type.AI_PLANNING, "分析任务并规划执行步骤");
@@ -582,6 +620,9 @@ public class JChatMind {
             log.error("Error running agent", e);
             throw new RuntimeException(formatAgentFailureMessage(e), e);
         } finally {
+            if (schedulerRun) {
+                SchedulerRunContext.clear();
+            }
             emitAgentPhase(SseMessage.Type.AI_DONE,
                     agentState == AgentState.ERROR ? "执行出错" : "处理完成");
         }

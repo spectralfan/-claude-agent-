@@ -4,11 +4,13 @@ import com.kama.jchatmind.agent.tools.Tool;
 import com.kama.jchatmind.agent.tools.ToolType;
 import com.kama.jchatmind.coding.context.CodingSessionContext;
 import com.kama.jchatmind.coding.model.dto.CommandExecutionResult;
+import com.kama.jchatmind.coding.model.dto.StackVerifyCommandDTO;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
 import com.kama.jchatmind.coding.service.CodingTaskService;
 import com.kama.jchatmind.coding.service.CodingVerificationService;
 import com.kama.jchatmind.coding.service.CodingWorkspaceService;
 import com.kama.jchatmind.coding.service.SandboxCommandRunner;
+import com.kama.jchatmind.coding.service.StackVerifyExecutor;
 import com.kama.jchatmind.coding.config.CodingProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,11 +22,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 结构化验证工具（根治方案）：不经 MCP 自由 shell 字符串，直接 ProcessBuilder 执行白名单操作。
+ * Coding 验证工具：栈驱动 run_stack_verify 为主，保留语言无关的文件确认与 JS 语法检查。
  */
 @Slf4j
 @Component
@@ -42,6 +45,7 @@ public class CodingVerifyTools implements Tool {
     private final SandboxCommandRunner sandboxCommandRunner;
     private final CodingVerificationService codingVerificationService;
     private final CodingProperties codingProperties;
+    private final StackVerifyExecutor stackVerifyExecutor;
 
     @Override
     public String getName() {
@@ -50,7 +54,7 @@ public class CodingVerifyTools implements Tool {
 
     @Override
     public String getDescription() {
-        return "Coding 结构化验证：JS 语法检查、文件存在确认、白名单测试命令（不经 MCP 自由 shell）";
+        return "Coding 栈驱动验证：list/run_stack_verify、文件确认、JS 语法（仅 .js）";
     }
 
     @Override
@@ -59,8 +63,24 @@ public class CodingVerifyTools implements Tool {
     }
 
     @org.springframework.ai.tool.annotation.Tool(
+            name = "list_stack_verify_commands",
+            description = "列出当前技术栈配置的验证命令（label + type）。执行前应先调用此工具。"
+    )
+    public String listStackVerifyCommands() {
+        return stackVerifyExecutor.listVerifyCommands(requireTask());
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(
+            name = "run_stack_verify",
+            description = "按 label 执行栈配置的验证命令（MCP 优先，失败降级 sandbox）。先 list_stack_verify_commands 获取可用 label。"
+    )
+    public String runStackVerify(String label) {
+        return stackVerifyExecutor.runByLabel(requireTask(), label);
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(
             name = "check_js_syntax",
-            description = "检查工作区内 JS 文件语法（node --check）。relativePath 如 js/game.js 或 tank-battle/js/constants.js"
+            description = "仅对 .js 文件做 node --check 语法检查。HTML/CSS/其他文件请用 verify_coding_file 或 run_stack_verify。"
     )
     public String checkJsSyntax(String relativePath) {
         return runNodeCheck(requireTask(), relativePath);
@@ -68,7 +88,7 @@ public class CodingVerifyTools implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(
             name = "verify_coding_file",
-            description = "确认工作区内文件存在且可读。relativePath 相对于任务工作区根"
+            description = "确认工作区内文件存在且可读（适用于 HTML 等任意扩展名）。relativePath 相对于任务工作区根"
     )
     public String verifyCodingFile(String relativePath) {
         try {
@@ -86,8 +106,8 @@ public class CodingVerifyTools implements Tool {
     @org.springframework.ai.tool.annotation.Tool(
             name = "run_allowed_verify",
             description = """
-                    运行白名单验证命令（无 shell 拼字符串）。允许：
-                    npm test | npm run <script> | uv run pytest ... | node --check <relativePath>
+                    （兼容）优先匹配栈 verifyCommands 后转 run_stack_verify；否则走旧白名单 sandbox。
+                    推荐改用 list_stack_verify_commands + run_stack_verify(label)。
                     """
     )
     public String runAllowedVerify(String command) {
@@ -96,13 +116,17 @@ public class CodingVerifyTools implements Tool {
         if (trimmed.isEmpty()) {
             return "exit code: 1\ncommand 不能为空";
         }
+        Optional<StackVerifyCommandDTO> stackMatch = stackVerifyExecutor.findByShellCommand(task, trimmed);
+        if (stackMatch.isPresent()) {
+            return stackVerifyExecutor.runByLabel(task, stackMatch.get().getLabel());
+        }
         List<String> processArgs = parseAllowedCommand(trimmed);
         if (processArgs == null) {
             return """
                     exit code: 1
                     命令不在白名单: %s
-                    允许: npm test | npm run <script> | uv run pytest | node --check <path>
-                    或改用 check_js_syntax / verify_coding_file
+                    请先用 list_stack_verify_commands，再 run_stack_verify(label)；
+                    或 verify_coding_file（HTML）/ check_js_syntax（仅 .js）
                     """.formatted(trimmed);
         }
         return formatResult(execute(task, processArgs, trimmed));
@@ -113,7 +137,8 @@ public class CodingVerifyTools implements Tool {
             return "exit code: 1\nrelativePath 不能为空";
         }
         if (!RELATIVE_PATH.matcher(relativePath).matches() || !relativePath.toLowerCase(Locale.ROOT).endsWith(".js")) {
-            return "exit code: 1\n非法 JS 路径: " + relativePath;
+            return "exit code: 1\n非法 JS 路径: " + relativePath
+                    + "（仅 .js；HTML/其他请用 verify_coding_file 或 run_stack_verify）";
         }
         try {
             resolveSafePath(task, relativePath);

@@ -1,142 +1,158 @@
-import React, { useState } from "react";
-import { RobotOutlined, CodeOutlined } from "@ant-design/icons";
-import { Tabs, type TabsProps, Button } from "antd";
-import { useNavigate } from "react-router-dom";
-import AgentTabContent from "./tabs/AgentTabContent.tsx";
-import AddAgentModal from "./modals/AddAgentModal.tsx";
-import ChatTabContent from "./tabs/ChatTabContent.tsx";
-import KnowledgeBaseTabContent from "./tabs/KnowledgeBaseTabContent.tsx";
-import AddKnowledgeBaseModal from "./modals/AddKnowledgeBaseModal.tsx";
-import { useAgents } from "../hooks/useAgents.ts";
-import { useKnowledgeBases } from "../hooks/useKnowledgeBases.ts";
+import React, { useState } from 'react';
+import {
+  RobotOutlined,
+  CodeOutlined,
+  MessageOutlined,
+  DatabaseOutlined,
+  PlusOutlined,
+} from '@ant-design/icons';
+import { Tabs, type TabsProps, Button, List, Typography } from 'antd';
+import { useNavigate } from 'react-router-dom';
+import AgentTabContent from './tabs/AgentTabContent.tsx';
+import AddAgentModal from './modals/AddAgentModal.tsx';
+import ChatTabContent from './tabs/ChatTabContent.tsx';
+import KnowledgeBaseTabContent from './tabs/KnowledgeBaseTabContent.tsx';
+import AddKnowledgeBaseModal from './modals/AddKnowledgeBaseModal.tsx';
+import { useAgents } from '../hooks/useAgents.ts';
+import { useKnowledgeBases } from '../hooks/useKnowledgeBases.ts';
+import { getChatSessions } from '../api/api.ts';
 
-interface SideMenuProps {
-  children?: React.ReactNode;
-}
+const { Text } = Typography;
 
-const SideMenu: React.FC<SideMenuProps> = () => {
+const SideMenu: React.FC = () => {
   const navigate = useNavigate();
-
   const [isAddAgentModalOpen, setIsAddAgentModalOpen] = useState(false);
-  const toggleAddAgentModal = () => {
-    setIsAddAgentModalOpen(!isAddAgentModalOpen);
-    setEditingAgent(null);
-  };
+  const [editingAgent, setEditingAgent] = useState<any>(null);
+  const [isAddKnowledgeBaseModalOpen, setIsAddKnowledgeBaseModalOpen] = useState(false);
+  const { agents, createAgentHandle, deleteAgentHandle, updateAgentHandle } = useAgents();
+  const { knowledgeBases, createKnowledgeBaseHandle } = useKnowledgeBases();
+  const [codingSessions, setCodingSessions] = useState<any[]>([]);
 
-  const [editingAgent, setEditingAgent] = useState<
-    import("../api/api.ts").AgentVO | null
-  >(null);
-
-  /**
-   * 添加知识库模态框状态
-   */
-  const [isAddKnowledgeBaseModalOpen, setIsAddKnowledgeBaseModalOpen] =
-    useState(false);
-  const toggleAddKnowledgeBaseModal = () => {
-    setIsAddKnowledgeBaseModalOpen(!isAddKnowledgeBaseModalOpen);
-  };
-  const { agents, createAgentHandle, deleteAgentHandle, updateAgentHandle } =
-    useAgents();
+  React.useEffect(() => {
+    getChatSessions('CODING').then(r => setCodingSessions(r.chatSessions || [])).catch(() => {});
+  }, []);
 
   const [activeKey, setActiveKey] = useState(() => {
-    if (location.pathname.startsWith("/agent")) return "agent";
-    if (location.pathname.startsWith("/knowledge-base")) return "knowledgeBase";
-    if (location.pathname.startsWith("/coding")) return "coding";
-    if (location.pathname.startsWith("/chat")) return "chat";
-    return "agent";
+    if (location.pathname.startsWith('/knowledge-base')) return 'knowledgeBase';
+    return 'chat-coding';
   });
 
-  const { knowledgeBases, createKnowledgeBaseHandle } = useKnowledgeBases();
+  const [subKey, setSubKey] = useState(() => {
+    if (location.pathname.startsWith('/coding')) return 'coding';
+    return 'chat';
+  });
 
-  // 处理标签页切换
-  const handleTabChange = (key: string) => {
-    setActiveKey(key);
-  };
+  const handleTabChange = (key: string) => { setActiveKey(key); };
 
-  const items: TabsProps["items"] = [
+  const items: TabsProps['items'] = [
     {
-      key: "agent",
-      label: <span className="select-none">智能体助手</span>,
+      key: 'chat-coding',
+      label: <span className='select-none'><MessageOutlined /> 对话与编码</span>,
       children: (
-        <AgentTabContent
-          agents={agents}
-          onSelectAgent={() => {}}
-          onCreateAgentClick={toggleAddAgentModal}
-          onEditAgent={(agent) => {
-            setEditingAgent(agent);
-            setIsAddAgentModalOpen(true);
-          }}
-          onDeleteAgent={deleteAgentHandle}
-        />
+        <div className='flex flex-col h-full'>
+          <div className='flex border-b border-gray-200 mb-2'>
+            <Button
+              type={subKey === 'chat' ? 'primary' : 'text'}
+              size='small'
+              style={{ flex: 1, borderRadius: 0 }}
+              icon={<RobotOutlined />}
+              onClick={() => { setSubKey('chat'); navigate('/chat'); }}
+            >
+              普通对话
+            </Button>
+            <Button
+              type={subKey === 'coding' ? 'primary' : 'text'}
+              size='small'
+              style={{ flex: 1, borderRadius: 0 }}
+              icon={<CodeOutlined />}
+              onClick={() => { setSubKey('coding'); navigate('/coding'); }}
+            >
+              AI Coding
+            </Button>
+          </div>
+          <div className='flex-1 min-h-0 overflow-y-auto'>
+            {subKey === 'chat' && (
+              <>
+                <AgentTabContent
+                  agents={agents}
+                  onSelectAgent={(agentId) => {
+                    navigate('/chat');
+                  }}
+                  onCreateAgentClick={() => setIsAddAgentModalOpen(true)}
+                  onEditAgent={(agent) => { setEditingAgent(agent); setIsAddAgentModalOpen(true); }}
+                  onDeleteAgent={deleteAgentHandle}
+                />
+                <div className='px-2 mt-1'>
+                  <ChatTabContent />
+                </div>
+              </>
+            )}
+            {subKey === 'coding' && (
+              <div className='p-2 flex flex-col gap-2'>
+                <Button
+                  type='primary'
+                  icon={<PlusOutlined />}
+                  block
+                  onClick={() => navigate('/coding')}
+                >
+                  新建 Coding 会话
+                </Button>
+                <Text type='secondary' className='text-xs'>已有 Coding 会话</Text>
+                <List
+                  size='small'
+                  dataSource={codingSessions}
+                  renderItem={(s: any) => (
+                    <List.Item
+                      className='cursor-pointer hover:bg-gray-50 rounded px-2'
+                      onClick={() => navigate('/coding/' + s.id)}
+                    >
+                      <List.Item.Meta
+                        title={<Text className='text-sm'>{s.title || 'Coding 会话'}</Text>}
+                      />
+                    </List.Item>
+                  )}
+                  locale={{ emptyText: <Text type='secondary'>暂无 Coding 会话</Text> }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
       ),
     },
     {
-      key: "chat",
-      label: <span className="select-none">聊天记录</span>,
-      children: <ChatTabContent />,
-    },
-    {
-      key: "knowledgeBase",
-      label: <span className="select-none">知识库</span>,
+      key: 'knowledgeBase',
+      label: <span className='select-none'><DatabaseOutlined /> 知识库</span>,
       children: (
         <KnowledgeBaseTabContent
           knowledgeBases={knowledgeBases}
-          onCreateKnowledgeBaseClick={toggleAddKnowledgeBaseModal}
-          onSelectKnowledgeBase={(knowledgeBaseId) => {
-            navigate(`/knowledge-base/${knowledgeBaseId}`);
-          }}
+          onCreateKnowledgeBaseClick={() => setIsAddKnowledgeBaseModalOpen(true)}
+          onSelectKnowledgeBase={(id) => navigate('/knowledge-base/' + id)}
         />
-      ),
-    },
-    {
-      key: "coding",
-      label: <span className="select-none">AI Coding</span>,
-      children: (
-        <div className="p-2 flex flex-col gap-2">
-          <Button
-            type="primary"
-            icon={<CodeOutlined />}
-            block
-            onClick={() => navigate("/coding")}
-          >
-            打开 AI Coding 工作台
-          </Button>
-          <span className="text-xs text-gray-400 select-none">
-            受控 Maven 命令执行，需审批后才会运行
-          </span>
-        </div>
       ),
     },
   ];
 
   return (
-    <div className="px-4 flex flex-col h-full">
-      <div className="h-14 w-full flex items-center border-b border-gray-200">
-        <div className="flex items-center gap-2.5 mx-4">
-          <RobotOutlined className="text-xl text-indigo-600" />
-          <div className="text-lg font-semibold select-none text-gray-900">
-            JChatMind
-          </div>
+    <div className='px-4 flex flex-col h-full'>
+      <div className='h-14 w-full flex items-center border-b border-gray-200'>
+        <div className='flex items-center gap-2.5 mx-4'>
+          <RobotOutlined className='text-xl text-indigo-600' />
+          <div className='text-lg font-semibold select-none text-gray-900'>JChatMind</div>
         </div>
       </div>
-      <div className="flex-1 min-h-0 flex flex-col">
-        <Tabs
-          activeKey={activeKey}
-          onChange={handleTabChange}
-          items={items}
-          // className="h-full flex flex-col [&_.ant-tabs-content-holder]:flex-1 [&_.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full"
-        />
+      <div className='flex-1 min-h-0 flex flex-col'>
+        <Tabs activeKey={activeKey} onChange={handleTabChange} items={items} />
       </div>
       <AddAgentModal
         open={isAddAgentModalOpen}
-        onClose={toggleAddAgentModal}
+        onClose={() => setIsAddAgentModalOpen(false)}
         createAgentHandle={createAgentHandle}
         updateAgentHandle={updateAgentHandle}
         editingAgent={editingAgent}
       />
       <AddKnowledgeBaseModal
         open={isAddKnowledgeBaseModalOpen}
-        onClose={toggleAddKnowledgeBaseModal}
+        onClose={() => setIsAddKnowledgeBaseModalOpen(false)}
         createKnowledgeBaseHandle={createKnowledgeBaseHandle}
       />
     </div>

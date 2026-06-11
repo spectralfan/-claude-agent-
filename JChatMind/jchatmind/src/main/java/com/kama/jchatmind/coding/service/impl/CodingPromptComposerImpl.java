@@ -97,7 +97,10 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
             sb.append("- 子路径: ").append(parentTask.getWorkspacePath() != null
                     ? parentTask.getWorkspacePath() : ".").append('\n');
             if (spec.getRole() == OrchestrationTaskRole.WORKER) {
-                sb.append(buildCodingAutonomousBlock(parentTask));
+                sb.append(buildCodingAutonomousBlock(parentTask, true));
+                sb.append(buildWorkerSubtaskBlock());
+            } else if (spec.getRole() == OrchestrationTaskRole.REVIEWER) {
+                sb.append(buildReviewerRoleBlock());
             }
         }
 
@@ -155,11 +158,14 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
                 - 子路径: %s
 
                 ## 编排协议（严禁违反）
-                1. **你只负责调度**：禁止改代码；可用 orchestration_read_tools 只读查看
-                2. 用 create_orchestration_task 创建 WORKER/REVIEWER 任务，规划 dependsOn 依赖
-                3. 用 list_orchestration_tasks 轮询；FAILED 时阅读 errorMessage 后 update 或新建任务
-                4. delegate_coding_task 等价创建 WORKER 任务（兼容旧流程）
-                5. 全部任务终态后向用户汇总；最终调用 mark_coding_complete
+                1. **你只负责调度**：禁止改代码、禁止 shell；用 orchestration_read_tools 只读辅助规划
+                2. **批量建图**：同一轮可多个 create_orchestration_task；大需求必须拆多个 WORKER，无 dependsOn 则并行
+                3. **Worker goal** 须含：改哪些文件、验收命令、完成标准（exit 0 + 行为）
+                4. Worker COMPLETED 后系统**自动**插入 Reviewer（coding.orchestration.auto-review）；一般无需手建 REVIEWER
+                5. **禁止 list 轮询**：全部 create 后用文字收手；仅在 [系统自动继续] 或用户追问时再 list（最多一次）
+                6. list 时终态任务附带 resultSummary / errorMessage
+                7. Worker FAILED → create 修复 Worker；Reviewer VERDICT: FAIL → create 修复 Worker
+                8. 全部终态后向用户汇总并 mark_coding_complete
                 """.formatted(
                 task.getId(),
                 task.getWorkspaceRoot() != null ? task.getWorkspaceRoot() : "(默认)",
@@ -167,7 +173,41 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
         );
     }
 
+    private String buildWorkerSubtaskBlock() {
+        return """
+
+                ## Worker 子任务协议
+                - 仅完成上述 goal 与 constraints，不扩大 scope
+                - **禁止** mark_coding_complete、禁止 create_orchestration_task
+                - 最后一条 assistant 消息必须包含：
+                  ## 交付摘要
+                  - 修改文件: ...
+                  - 验证命令与结果: ...
+                  - 完成情况: ...
+                """;
+    }
+
+    private String buildReviewerRoleBlock() {
+        return """
+
+                ## Reviewer 子任务协议
+                - 只读：orchestration_read_tools（list_workspace_dir / read_workspace_file）
+                - 对照 goal/constraints 检查质量、测试、安全、可维护性
+                - 最后一条 assistant 消息必须包含（Scheduler 会解析 VERDICT）：
+                  ## 审查结论
+                  VERDICT: PASS | FAIL
+                  ## 发现
+                  - ...
+                  ## 建议修复
+                  - （VERDICT=FAIL 时必填）
+                """;
+    }
+
     private String buildCodingAutonomousBlock(CodingTask task) {
+        return buildCodingAutonomousBlock(task, false);
+    }
+
+    private String buildCodingAutonomousBlock(CodingTask task, boolean orchestrationSubtask) {
         CodingTaskMetadata metadata = CodingTaskMetadata.fromJson(task.getMetadata());
         String approvalHint = metadata.getApprovalMode() != null
                 ? metadata.getApprovalMode().getCode()
@@ -187,10 +227,13 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
 
         String verifyWorkflow = stack != null && stack.getVerifyWorkflow() != null
                 ? stack.getVerifyWorkflow()
-                : "改代码后优先 coding_verify_tools（run_allowed_verify / check_js_syntax）；简单命令才用 MCP";
+                : "list_stack_verify_commands → run_stack_verify(label)；HTML 用 verify_coding_file；仅 .js 用 check_js_syntax";
         String doneCriteria = stack != null && stack.getDoneCriteria() != null
                 ? stack.getDoneCriteria()
                 : "验证命令 exit 0";
+        String completionStep = orchestrationSubtask
+                ? "验证通过后输出 ## 交付摘要（子任务内**禁止** mark_coding_complete）"
+                : "验证 exit 0 后调用 mark_coding_complete(summary)";
 
         String mcpTools = stack != null && stack.getSuggestedMcpTools() != null
                 && !stack.getSuggestedMcpTools().isEmpty()
@@ -213,8 +256,8 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
         int previewPort = codingProperties.getWorkspace().getPreviewPort();
         String windowsShellHint = """
                 
-                8. **验证（根治）**：优先 **coding_verify_tools**（check_js_syntax / verify_coding_file / run_allowed_verify），不经 MCP 拼 node -e、import 多行脚本。
-                9. **MCP 终端**：仅简单命令（npm test、dir）；必须设 workingDir=工作区根；禁止 http-server、禁止占 8080。
+                8. **验证**：**list_stack_verify_commands** → **run_stack_verify(label)**（栈配置，MCP 优先）；HTML 用 verify_coding_file；仅 .js 用 check_js_syntax；禁止对 .html 做语法检查。
+                9. **MCP 终端**：仅简单辅助命令（dir、type）；必须设 workingDir=工作区根；禁止 http-server、禁止占 8080。
                    HTML 预览请用户浏览器直接打开，或本地手动 `npx http-server -p %d`。""".formatted(previewPort);
 
         return """
@@ -227,13 +270,15 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
                 - 推荐工具: %s
 
                 ## 自主开发协议
-                1. 使用 coding_file_tools 读写文件；大 HTML/JS **禁止单次 write 整文件**（易 JSON 截断），先写骨架再 append_coding_file / apply_coding_patch 分块
-                2. coding_search_tools 搜索/局部 patch
-                3. 验证：%s
-                4. 结构化验证用 coding_verify_tools；仅简单命令才用 MCP（%s）
-                5. 同一用户请求内连续完成全流程，不要中途停下等用户再发消息
-                6. 用户消息中的 @文件 已附带 <file> 内容，可直接引用
-                7. 完成标准：%s；验证 exit 0 后调用 mark_coding_complete(summary)%s%s
+                1. 使用 coding_file_tools 读写文件；**探索目录用 list_coding_directory_tree(maxDepth=2~5)**，勿逐层 list_coding_directory；**多读文件用 read_coding_files** 一次批量读取
+                2. 同一推理轮可并行发起多个 tool_calls（如列目录树 + 批量读 pom.xml 与主类），减少循环次数
+                3. 大 HTML/JS **禁止单次 write 整文件**（易 JSON 截断），先写骨架再 append_coding_file / apply_coding_patch 分块
+                4. coding_search_tools 搜索/局部 patch
+                5. 验证：%s
+                6. 栈验证用 coding_verify_tools（list/run_stack_verify）；仅简单辅助命令才用 MCP（%s）
+                7. 同一用户请求内连续完成全流程，不要中途停下等用户再发消息
+                8. 用户消息中的 @文件 已附带 <file> 内容，可直接引用
+                9. 完成标准：%s；%s%s%s
                 """.formatted(
                 task.getId(),
                 task.getWorkspaceRoot() != null ? task.getWorkspaceRoot() : "(默认)",
@@ -245,6 +290,7 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
                 verifyWorkflow,
                 mcpTools,
                 doneCriteria,
+                completionStep,
                 mavenFallback,
                 pythonUvHint,
                 windowsShellHint

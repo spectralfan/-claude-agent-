@@ -61,9 +61,9 @@ public class McpShellCommandPolicy {
             return Optional.of("""
                     禁止经 MCP 执行 ES module 多行 import 脚本（引号会被 shell 弄碎）。
                     请改用 coding_verify_tools：
-                    - check_js_syntax(relativePath) 检查单个 JS 文件
-                    - verify_coding_file(relativePath) 确认文件存在
-                    - run_allowed_verify(command) 运行 npm test / uv run pytest 等白名单命令
+                    - list_stack_verify_commands 后 run_stack_verify(label)
+                    - check_js_syntax(relativePath) 仅 .js 语法检查
+                    - verify_coding_file(relativePath) 确认 HTML 等文件存在
                     exit code: 1""");
         }
         return Optional.empty();
@@ -71,16 +71,16 @@ public class McpShellCommandPolicy {
 
     private String buildBlockedMessage(String pattern, String command) {
         String hint = switch (pattern) {
-            case "node\\s+-e\\b" -> "用 check_js_syntax(path) 或 run_allowed_verify(\"node --check path.js\")";
-            case "node\\s+--input-type=module" -> "用 check_js_syntax 逐个检查 JS 文件";
+            case "node\\s+-e\\b" -> "用 list_stack_verify_commands + run_stack_verify(label)，或 check_js_syntax(仅.js)";
+            case "node\\s+--input-type=module" -> "用 check_js_syntax 逐个检查 .js 文件";
             case "\\bhttp-server\\b", "\\bpython\\s+-m\\s+http\\.server\\b" ->
                     "HTML 预览请用户浏览器直接打开文件；静态服务用 preview-port(5500) 在本地终端手动启动";
             case "-p\\s+8080\\b", "localhost:8080" -> "8080 为 JChatMind 后端端口，请用 coding.workspace.preview-port(默认5500)";
             case "node\\s+--check\\s+\\S+\\.html\\b" ->
                     "HTML 不能用 node --check；请用 verify_coding_file(path) 或 dir/type 确认文件存在";
             case "[|]|>nul|(^|[^&])&[^&]" ->
-                    "禁止 cmd 管道/重定向（|、&、>nul）；用 coding_verify_tools 或简单单条命令（dir、type）";
-            default -> "请优先使用 coding_verify_tools 结构化验证工具";
+                    "禁止 cmd 管道/重定向（|、&、>nul）；用 list_stack_verify_commands + run_stack_verify(label)";
+            default -> "请用 list_stack_verify_commands + run_stack_verify(label)";
         };
         return """
                 MCP 命令被策略拦截（%s）。

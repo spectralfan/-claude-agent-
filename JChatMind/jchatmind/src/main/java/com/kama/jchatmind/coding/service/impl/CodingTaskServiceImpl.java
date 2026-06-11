@@ -1,5 +1,6 @@
 package com.kama.jchatmind.coding.service.impl;
 
+import com.kama.jchatmind.coding.config.CodingProperties;
 import com.kama.jchatmind.coding.mapper.CodingTaskMapper;
 import com.kama.jchatmind.coding.model.dto.CodingStackDTO;
 import com.kama.jchatmind.coding.model.dto.CodingTaskDTO;
@@ -32,6 +33,7 @@ public class CodingTaskServiceImpl implements CodingTaskService {
     private final CodingStackService codingStackService;
     private final WorkspaceDetectService workspaceDetectService;
     private final WorkspaceScaffoldService workspaceScaffoldService;
+    private final CodingProperties codingProperties;
 
     @Override
     public String createTask(CreateCodingTaskRequest request) {
@@ -44,7 +46,9 @@ public class CodingTaskServiceImpl implements CodingTaskService {
         String language = null;
         String skillId = request.getSkillId();
 
-        boolean autoDetect = request.getAutoDetectStack() == null || Boolean.TRUE.equals(request.getAutoDetectStack());
+        boolean autoDetect = request.getAutoDetectStack() != null
+                ? Boolean.TRUE.equals(request.getAutoDetectStack())
+                : codingProperties.getStack().isAutoDetect();
         if (autoDetect && (stackId == null || stackId.isBlank())) {
             WorkspaceDetectResultDTO detected = workspaceDetectService.detect(
                     request.getWorkspaceRoot(), request.getWorkspacePath());
@@ -154,18 +158,21 @@ public class CodingTaskServiceImpl implements CodingTaskService {
     }
 
     @Override
-    public void applyDetectedStackIfAbsent(CodingTask task) {
+    public boolean applyDetectedStackIfAbsent(CodingTask task) {
         if (task == null || task.getId() == null) {
-            return;
+            return false;
+        }
+        if (!codingProperties.getStack().isAutoDetect()) {
+            return false;
         }
         CodingTaskMetadata metadata = CodingTaskMetadata.fromJson(task.getMetadata());
         if (StringUtils.hasText(metadata.getStackId())) {
-            return;
+            return false;
         }
         WorkspaceDetectResultDTO detected = workspaceDetectService.detect(
                 task.getWorkspaceRoot(), task.getWorkspacePath());
         if (detected.getStackId() == null || detected.getStackId().isBlank()) {
-            return;
+            return false;
         }
         String stackId = detected.getStackId();
         CodingStackDTO stack = codingStackService.findById(stackId).orElse(null);
@@ -181,6 +188,7 @@ public class CodingTaskServiceImpl implements CodingTaskService {
         codingTaskMapper.updateMetadata(task.getId(), metadata.toJson());
         task.setMetadata(metadata.toJson());
         log.info("Coding 任务 {} 已自动识别技术栈: {}", task.getId(), stackId);
+        return true;
     }
 
     @Override

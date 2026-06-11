@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kama.jchatmind.agent.tools.Tool;
 import com.kama.jchatmind.agent.tools.ToolType;
 import com.kama.jchatmind.coding.context.CodingSessionContext;
+import com.kama.jchatmind.coding.context.SchedulerRunContext;
 import com.kama.jchatmind.coding.context.SubAgentRunContext;
 import com.kama.jchatmind.coding.model.dto.OrchestrationTaskDTO;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
@@ -51,7 +52,11 @@ public class OrchestrationTaskTools implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(
             name = "create_orchestration_task",
-            description = "创建编排子任务。role=WORKER|REVIEWER；dependsOn 为依赖任务 ID 列表（可选）。"
+            description = "创建编排子任务。role=WORKER|REVIEWER。"
+                    + "大需求须拆成多个 WORKER，同一 assistant 轮可发起多个 create tool_calls 并行建图。"
+                    + "goal 须具体：改哪些文件、验收命令、完成标准。"
+                    + "dependsOn 为逗号分隔的任务 ID；无依赖的 WORKER 由系统自动并行执行。"
+                    + "Worker COMPLETED 后系统通常自动创建 Reviewer，一般无需手建 REVIEWER。"
     )
     public String createOrchestrationTask(
             String role,
@@ -88,8 +93,12 @@ public class OrchestrationTaskTools implements Tool {
                 null,
                 null
         );
+        SchedulerRunContext.incrementCreate();
+        int createdCount = SchedulerRunContext.getCreateCount();
         return "任务已创建 status=" + created.getStatus() + " taskId=" + created.getId()
-                + " role=" + created.getRole();
+                + " role=" + created.getRole()
+                + "\n本轮已创建 " + createdCount + " 个任务。"
+                + " 大需求须拆多个 WORKER：同一轮可并行多个 create_orchestration_task，或继续 create 直至拆完，再告知用户勿 list。";
     }
 
     @org.springframework.ai.tool.annotation.Tool(
@@ -118,7 +127,7 @@ public class OrchestrationTaskTools implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(
             name = "list_orchestration_tasks",
-            description = "列出当前会话全部编排任务（格式化摘要）。"
+            description = "列出编排任务 DAG。仅在有 [系统自动继续] 或需决策失败/审查时调用；禁止轮询 RUNNING 任务。"
     )
     public String listOrchestrationTasks() {
         CodingSessionContext.Context ctx = requireContext();
@@ -126,13 +135,34 @@ public class OrchestrationTaskTools implements Tool {
         if (list.isEmpty()) {
             return "当前会话暂无编排任务";
         }
+        if (hasActiveTasks(list)) {
+            int pollCount = SchedulerRunContext.incrementListPoll();
+            if (pollCount > 1) {
+                return SchedulerRunContext.IDLE_DIRECTIVE_PREFIX
+                        + "：禁止重复 list 轮询。请直接回复用户并结束本轮，等待 [系统自动继续]。";
+            }
+        }
         Map<String, OrchestrationTaskDTO> byId = list.stream()
                 .collect(Collectors.toMap(OrchestrationTaskDTO::getId, t -> t));
         StringBuilder sb = new StringBuilder("共 ").append(list.size()).append(" 个任务:\n");
         for (OrchestrationTaskDTO dto : list) {
             sb.append(formatSummaryLine(dto, byId)).append("\n");
         }
+        if (hasActiveTasks(list)) {
+            sb.append("\n\n").append(SchedulerRunContext.IDLE_DIRECTIVE_PREFIX)
+                    .append("：存在未终态任务，Worker/Reviewer 后台执行中。"
+                            + "请向用户说明已委派并**结束本轮**，勿再调用 list_orchestration_tasks。");
+        }
         return sb.toString().trim();
+    }
+
+    private static boolean hasActiveTasks(List<OrchestrationTaskDTO> list) {
+        return list.stream().anyMatch(dto -> {
+            OrchestrationTaskStatus status = OrchestrationTaskStatus.fromCode(dto.getStatus());
+            return status == OrchestrationTaskStatus.PENDING
+                    || status == OrchestrationTaskStatus.READY
+                    || status == OrchestrationTaskStatus.RUNNING;
+        });
     }
 
     @org.springframework.ai.tool.annotation.Tool(
@@ -151,8 +181,31 @@ public class OrchestrationTaskTools implements Tool {
         String goalLine = dto.getGoal() != null && dto.getGoal().length() > 80
                 ? dto.getGoal().substring(0, 80) + "..."
                 : dto.getGoal();
-        return "- [%s] %s role=%s deps=[%s] title=%s | %s".formatted(
+        String line = "- [%s] %s role=%s deps=[%s] title=%s | %s".formatted(
                 dto.getStatus(), dto.getId(), dto.getRole(), deps, dto.getTitle(), goalLine);
+        String outcome = formatTerminalOutcome(dto);
+        return outcome != null ? line + " | " + outcome : line;
+    }
+
+    private String formatTerminalOutcome(OrchestrationTaskDTO dto) {
+        OrchestrationTaskStatus status = OrchestrationTaskStatus.fromCode(dto.getStatus());
+        if (status == OrchestrationTaskStatus.COMPLETED && dto.getResultSummary() != null
+                && !dto.getResultSummary().isBlank()) {
+            return "summary=" + truncate(dto.getResultSummary(), 200);
+        }
+        if (status == OrchestrationTaskStatus.FAILED && dto.getErrorMessage() != null
+                && !dto.getErrorMessage().isBlank()) {
+            return "error=" + truncate(dto.getErrorMessage(), 200);
+        }
+        return null;
+    }
+
+    private static String truncate(String text, int maxLen) {
+        String oneLine = text.replace('\n', ' ').trim();
+        if (oneLine.length() <= maxLen) {
+            return oneLine;
+        }
+        return oneLine.substring(0, maxLen) + "...";
     }
 
     private String formatDeps(List<String> deps, Map<String, OrchestrationTaskDTO> byId) {

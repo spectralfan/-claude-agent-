@@ -2,6 +2,7 @@ package com.kama.jchatmind.agent.tools.coding;
 
 import com.kama.jchatmind.agent.tools.Tool;
 import com.kama.jchatmind.agent.tools.ToolType;
+import com.kama.jchatmind.coding.config.CodingProperties;
 import com.kama.jchatmind.coding.context.CodingSessionContext;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
 import com.kama.jchatmind.coding.registry.CodingChangeRegistry;
@@ -19,6 +20,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -31,6 +34,7 @@ public class CodingFileTools implements Tool {
     private final CodingChangeRegistry changeRegistry;
     private final ChatEventPublisher chatEventPublisher;
     private final CodingVerificationService codingVerificationService;
+    private final CodingProperties codingProperties;
 
     @Override
     public String getName() {
@@ -48,8 +52,49 @@ public class CodingFileTools implements Tool {
     }
 
     @org.springframework.ai.tool.annotation.Tool(
+            name = "read_coding_files",
+            description = """
+                    批量读取多个工作区文件（一次调用替代多次 read_coding_file）。
+                    relativePaths 为逗号或换行分隔的相对路径，最多 10 个；单文件超出长度会截断。"""
+    )
+    public String readFiles(String relativePaths) {
+        List<String> paths = parsePathList(relativePaths);
+        if (paths.isEmpty()) {
+            return "错误：relativePaths 不能为空";
+        }
+        int maxFiles = codingProperties.getWorkspace().getBatchReadMaxFiles();
+        if (paths.size() > maxFiles) {
+            return "错误：单次最多读取 " + maxFiles + " 个文件，当前 " + paths.size() + " 个";
+        }
+        int maxChars = codingProperties.getWorkspace().getBatchReadMaxCharsPerFile();
+        StringBuilder sb = new StringBuilder();
+        for (String path : paths) {
+            sb.append("=== ").append(path).append(" ===\n");
+            try {
+                Path file = resolveFilePath(path);
+                if (!Files.exists(file) || !Files.isRegularFile(file)) {
+                    sb.append("错误：文件不存在或不是文件\n\n");
+                    continue;
+                }
+                String content = Files.readString(file);
+                if (content.length() > maxChars) {
+                    sb.append(content, 0, maxChars)
+                            .append("\n...[truncated, total=").append(content.length()).append("]\n\n");
+                } else {
+                    sb.append(content).append("\n\n");
+                }
+            } catch (IllegalStateException e) {
+                sb.append(e.getMessage()).append("\n\n");
+            } catch (IOException e) {
+                sb.append("错误：读取失败 - ").append(e.getMessage()).append("\n\n");
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(
             name = "read_coding_file",
-            description = "读取 Coding 工作区内的文件。relativePath 相对于当前任务工作区，如 pom.xml 或 src/main/java/com/example/App.java"
+            description = "读取 Coding 工作区内的单个文件。多文件请优先 read_coding_files 一次读完。"
     )
     public String readFile(String relativePath) {
         try {
@@ -143,8 +188,26 @@ public class CodingFileTools implements Tool {
     }
 
     @org.springframework.ai.tool.annotation.Tool(
+            name = "list_coding_directory_tree",
+            description = """
+                    递归列出 Coding 工作区目录树（一次调用替代逐层 list_coding_directory）。
+                    relativePath 为空或 . 表示工作区根；maxDepth 默认 2，上限 5。"""
+    )
+    public String listDirectoryTree(String relativePath, Integer maxDepth) {
+        try {
+            CodingTask task = requireActiveTask();
+            String rel = relativePath == null || relativePath.isBlank() ? "." : relativePath;
+            int depth = maxDepth != null ? maxDepth : codingProperties.getWorkspace().getListDirDefaultDepth();
+            depth = Math.min(depth, codingProperties.getWorkspace().getListDirMaxDepth());
+            return codingWorkspaceService.listDirectoryTreeForTask(task, rel, depth);
+        } catch (IllegalStateException e) {
+            return e.getMessage();
+        }
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(
             name = "list_coding_directory",
-            description = "列出 Coding 工作区目录内容。relativePath 为空或 . 表示工作区根"
+            description = "仅列出单层目录。探索子目录请用 list_coding_directory_tree(maxDepth=2~5)。"
     )
     public String listDirectory(String relativePath) {
         try {
@@ -181,7 +244,7 @@ public class CodingFileTools implements Tool {
         return target;
     }
 
-    private Path requireTaskWorkspace() {
+    private CodingTask requireActiveTask() {
         CodingSessionContext.Context ctx = CodingSessionContext.get();
         if (ctx == null) {
             throw new IllegalStateException("错误：无 Coding 会话上下文，无法访问工作区文件");
@@ -190,7 +253,22 @@ public class CodingFileTools implements Tool {
         if (task == null) {
             throw new IllegalStateException("错误：当前会话无活动 Coding 任务，请先在 AI Coding 页创建任务");
         }
-        return codingWorkspaceService.resolveForTask(task);
+        return task;
+    }
+
+    private static List<String> parsePathList(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(raw.split("[,\\n]+"))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .toList();
+    }
+
+    private Path requireTaskWorkspace() {
+        return codingWorkspaceService.resolveForTask(requireActiveTask());
     }
 
     private static String normalizeRelativePath(String relativePath) {

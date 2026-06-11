@@ -15,10 +15,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.stream.Stream;
 
 @Slf4j
 @Component
@@ -79,46 +75,12 @@ public class OrchestrationReadTools implements Tool {
     public String listWorkspaceDir(String relativePath, Integer maxDepth) {
         try {
             CodingTask task = requireActiveTask();
-            Path base = codingWorkspaceService.resolveForTask(task);
             String rel = relativePath == null || relativePath.isBlank() ? "." : relativePath;
-            Path dir = base.resolve(rel).normalize();
-            if (!codingWorkspaceService.isPathSafe(base, dir)) {
-                return "错误：路径越界 - " + relativePath;
-            }
-            if (!Files.exists(dir) || !Files.isDirectory(dir)) {
-                return "错误：目录不存在 - " + relativePath;
-            }
             int depth = maxDepth != null ? maxDepth : orchestrationProperties.getListDirDefaultDepth();
             depth = Math.min(depth, orchestrationProperties.getListDirMaxDepth());
-            List<String> lines = new ArrayList<>();
-            walkDir(dir, base, 0, depth, lines);
-            if (lines.isEmpty()) {
-                return "(空目录)";
-            }
-            return String.join("\n", lines);
+            return codingWorkspaceService.listDirectoryTreeForTask(task, rel, depth);
         } catch (IllegalStateException e) {
             return e.getMessage();
-        } catch (IOException e) {
-            return "错误：列出目录失败 - " + e.getMessage();
-        }
-    }
-
-    private void walkDir(Path dir, Path base, int currentDepth, int maxDepth, List<String> lines)
-            throws IOException {
-        if (currentDepth > maxDepth) {
-            return;
-        }
-        try (Stream<Path> stream = Files.list(dir)) {
-            List<Path> children = stream.sorted(Comparator.comparing(p -> p.getFileName().toString()))
-                    .toList();
-            for (Path child : children) {
-                String rel = base.relativize(child).toString().replace('\\', '/');
-                boolean isDir = Files.isDirectory(child);
-                lines.add((isDir ? "[D] " : "[F] ") + rel);
-                if (isDir && currentDepth < maxDepth) {
-                    walkDir(child, base, currentDepth + 1, maxDepth, lines);
-                }
-            }
         }
     }
 

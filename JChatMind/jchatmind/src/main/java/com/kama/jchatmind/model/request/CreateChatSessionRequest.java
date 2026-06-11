@@ -1,12 +1,12 @@
 package com.kama.jchatmind.model.request;
-
 import lombok.Data;
 
 @Data
 public class CreateChatSessionRequest {
     private String agentId;
     private String title;
-    /** Coding 工作区绑定：首条用户消息时自动创建任务 */
+    /** CHAT / CODING，不传则由后端自动检测 */
+    private String type;
     private String workspaceRoot;
     private String workspacePath;
     private String approvalMode;

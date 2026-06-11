@@ -125,13 +125,31 @@ public class OrchestrationTaskDispatcher {
                 ? List.of(finished.getId())
                 : List.of();
         String goal = """
-                复查 Worker 任务「%s」的产出与风险。
-                任务目标：%s
-                Worker 摘要：%s
-                请检查：代码质量、遗漏测试、安全风险、与约束一致性。输出审查结论（通过/需修复及原因）。
+                审查 Worker「%s」产出（只读，不改代码）。
+
+                ## 原 Worker 目标
+                %s
+
+                ## Worker 交付摘要
+                %s
+
+                ## 审查清单
+                1. 是否满足原 goal 与 constraints
+                2. 代码质量、可维护性、边界情况
+                3. 测试/验证是否充分（对照 Worker 摘要中的验证结果）
+                4. 安全风险（注入、路径、敏感信息泄露等）
+
+                ## 输出要求
+                最后一条消息必须包含：
+                ## 审查结论
+                VERDICT: PASS | FAIL
+                ## 发现
+                - ...
+                ## 建议修复
+                - （VERDICT=FAIL 时必填，供 Scheduler 创建修复 Worker）
                 """.formatted(
                 finished.getTitle(),
-                finished.getGoal(),
+                finished.getGoal() != null ? finished.getGoal() : "(无)",
                 finished.getResultSummary() != null ? finished.getResultSummary() : "(无摘要)"
         );
         Map<String, Object> reviewMeta = new LinkedHashMap<>();

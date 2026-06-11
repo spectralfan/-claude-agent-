@@ -7,6 +7,7 @@ import com.kama.jchatmind.coding.context.SubAgentRunContext;
 import com.kama.jchatmind.coding.model.dto.OrchestrationTaskDTO;
 import com.kama.jchatmind.coding.model.dto.OrchestrationTaskSpec;
 import com.kama.jchatmind.coding.model.enums.OrchestrationTaskRole;
+import com.kama.jchatmind.coding.OrchestrationSummaryExtractor;
 import com.kama.jchatmind.coding.service.OrchestrationTaskExecutor;
 import com.kama.jchatmind.coding.service.OrchestrationTaskService;
 import com.kama.jchatmind.coding.service.OrchestratorContinuationService;
@@ -147,7 +148,7 @@ public class OrchestrationTaskExecutorImpl implements OrchestrationTaskExecutor 
             if (msg.getRole() == ChatMessageDTO.RoleType.ASSISTANT
                     && msg.getContent() != null
                     && !msg.getContent().isBlank()) {
-                return msg.getContent().trim();
+                return OrchestrationSummaryExtractor.extractStructuredSummary(msg.getContent());
             }
         }
         return "子 Agent 执行结束，请通过 list_orchestration_tasks 查看详情。";

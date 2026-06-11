@@ -6,9 +6,9 @@
   "scaffoldTemplate": "java-maven",
   "skillId": "java-autonomous-dev",
   "suggestedMcpTools": ["run_terminal_cmd", "bash"],
-  "verifyWorkflow": "改代码后通过 MCP 执行 mvn compile；通过后 mvn test；失败则读输出修复再测",
+  "verifyWorkflow": "list_stack_verify_commands → run_stack_verify(\"mvn compile\") 再 run_stack_verify(\"mvn test\")；失败则读输出修复",
   "doneCriteria": "mvn compile 与 mvn test 均 exit 0",
-  "suggestedAgentTools": ["coding_file_tools", "run_terminal_cmd", "maven_command"],
+  "suggestedAgentTools": ["coding_file_tools", "coding_verify_tools", "run_terminal_cmd", "maven_command"],
   "verifyCommands": [
     { "label": "mvn compile", "type": "maven", "goal": "compile" },
     { "label": "mvn test", "type": "maven", "goal": "test" }

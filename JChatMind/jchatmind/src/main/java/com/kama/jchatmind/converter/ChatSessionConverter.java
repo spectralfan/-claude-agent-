@@ -18,52 +18,48 @@ public class ChatSessionConverter {
 
     private final ObjectMapper objectMapper;
 
-    public ChatSession toEntity(ChatSessionDTO chatSessionDTO) throws JsonProcessingException {
-        Assert.notNull(chatSessionDTO, "ChatSessionDTO cannot be null");
-
+    public ChatSession toEntity(ChatSessionDTO dto) throws JsonProcessingException {
+        Assert.notNull(dto, "ChatSessionDTO cannot be null");
         return ChatSession.builder()
-                .id(chatSessionDTO.getId())
-                .agentId(chatSessionDTO.getAgentId())
-                .title(chatSessionDTO.getTitle())
-                .metadata(chatSessionDTO.getMetadata() != null
-                        ? writeSessionMetadata(chatSessionDTO.getMetadata())
-                        : null)
-                .createdAt(chatSessionDTO.getCreatedAt())
-                .updatedAt(chatSessionDTO.getUpdatedAt())
+                .id(dto.getId())
+                .agentId(dto.getAgentId())
+                .title(dto.getTitle())
+                .type(dto.getType())
+                .metadata(dto.getMetadata() != null ? writeSessionMetadata(dto.getMetadata()) : null)
+                .createdAt(dto.getCreatedAt())
+                .updatedAt(dto.getUpdatedAt())
                 .build();
     }
 
-    public ChatSessionDTO toDTO(ChatSession chatSession) throws JsonProcessingException {
-        Assert.notNull(chatSession, "ChatSession cannot be null");
-
+    public ChatSessionDTO toDTO(ChatSession entity) throws JsonProcessingException {
+        Assert.notNull(entity, "ChatSession cannot be null");
+        ChatSessionDTO.MetaData meta = null;
+        if (entity.getMetadata() != null) {
+            meta = objectMapper.readValue(entity.getMetadata(), ChatSessionDTO.MetaData.class);
+        }
         return ChatSessionDTO.builder()
-                .id(chatSession.getId())
-                .agentId(chatSession.getAgentId())
-                .title(chatSession.getTitle())
-                .metadata(chatSession.getMetadata() != null 
-                        ? objectMapper.readValue(chatSession.getMetadata(), ChatSessionDTO.MetaData.class) 
-                        : null)
-                .createdAt(chatSession.getCreatedAt())
-                .updatedAt(chatSession.getUpdatedAt())
+                .id(entity.getId())
+                .agentId(entity.getAgentId())
+                .title(entity.getTitle())
+                .type(entity.getType())
+                .metadata(meta)
+                .createdAt(entity.getCreatedAt())
+                .updatedAt(entity.getUpdatedAt())
                 .build();
     }
 
-    public ChatSessionVO toVO(ChatSessionDTO dto) {
+    public ChatSessionVO toVO(ChatSession entity) throws JsonProcessingException {
+        ChatSessionDTO dto = toDTO(entity);
         return ChatSessionVO.builder()
                 .id(dto.getId())
                 .agentId(dto.getAgentId())
                 .title(dto.getTitle())
+                .type(dto.getType())
                 .build();
-    }
-
-    public ChatSessionVO toVO(ChatSession chatSession) throws JsonProcessingException {
-        return toVO(toDTO(chatSession));
     }
 
     public ChatSessionDTO toDTO(CreateChatSessionRequest request) {
         Assert.notNull(request, "CreateChatSessionRequest cannot be null");
-        Assert.notNull(request.getAgentId(), "AgentId cannot be null");
-
         ChatSessionDTO.MetaData meta = null;
         if (hasCodingBinding(request)) {
             meta = new ChatSessionDTO.MetaData();
@@ -75,6 +71,7 @@ public class ChatSessionConverter {
         return ChatSessionDTO.builder()
                 .agentId(request.getAgentId())
                 .title(request.getTitle())
+                .type(request.getType())
                 .metadata(meta)
                 .build();
     }
@@ -86,28 +83,15 @@ public class ChatSessionConverter {
     private String writeSessionMetadata(ChatSessionDTO.MetaData meta) throws JsonProcessingException {
         ObjectNode root = objectMapper.createObjectNode();
         ObjectNode coding = objectMapper.createObjectNode();
-        if (meta.getWorkspaceRoot() != null) {
-            coding.put("workspaceRoot", meta.getWorkspaceRoot());
-        }
-        if (meta.getWorkspacePath() != null) {
-            coding.put("workspacePath", meta.getWorkspacePath());
-        }
-        if (meta.getApprovalMode() != null) {
-            coding.put("approvalMode", meta.getApprovalMode());
-        }
-        if (meta.getScaffoldOnCreate() != null) {
-            coding.put("scaffoldOnCreate", meta.getScaffoldOnCreate());
-        }
+        if (meta.getWorkspaceRoot() != null) coding.put("workspaceRoot", meta.getWorkspaceRoot());
+        if (meta.getWorkspacePath() != null) coding.put("workspacePath", meta.getWorkspacePath());
+        if (meta.getApprovalMode() != null) coding.put("approvalMode", meta.getApprovalMode());
+        if (meta.getScaffoldOnCreate() != null) coding.put("scaffoldOnCreate", meta.getScaffoldOnCreate());
         root.set("coding", coding);
         return objectMapper.writeValueAsString(root);
     }
 
     public void updateDTOFromRequest(ChatSessionDTO dto, UpdateChatSessionRequest request) {
-        Assert.notNull(dto, "ChatSessionDTO cannot be null");
-        Assert.notNull(request, "UpdateChatSessionRequest cannot be null");
-
-        if (request.getTitle() != null) {
-            dto.setTitle(request.getTitle());
-        }
+        if (request.getTitle() != null) dto.setTitle(request.getTitle());
     }
 }

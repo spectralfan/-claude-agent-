@@ -19,7 +19,8 @@ public interface CodingTaskService {
     /**
      * 任务尚无 stackId 时，根据工作区文件自动识别并写入 metadata（对话驱动，无需创建时手选栈）。
      */
-    void applyDetectedStackIfAbsent(CodingTask task);
+    /** @return 是否新识别并写入了 stackId */
+    boolean applyDetectedStackIfAbsent(CodingTask task);
 
     void markRunning(String taskId);
 

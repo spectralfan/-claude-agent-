@@ -48,7 +48,8 @@ export type SseMessageType =
   | "CODING_FAILED"
   | "CODING_SUBTASK_STARTED"
   | "CODING_SUBTASK_COMPLETED"
-  | "CODING_SUBTASK_FAILED";
+  | "CODING_SUBTASK_FAILED"
+  | "CODING_STACK_DETECTED";
 
 export interface SseMessagePayload {
   message: ChatMessageVO;
@@ -69,6 +70,7 @@ export interface SseMessagePayload {
   changeType?: string;
   oldContent?: string;
   newContent?: string;
+  stackId?: string;
 }
 
 export interface SseMessageMetadata {

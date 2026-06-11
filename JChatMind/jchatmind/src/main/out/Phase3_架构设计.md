@@ -1,8 +1,8 @@
 # Phase 3 — AI Coding 模块设计
 
 > 上级文档：[architecture.md](./architecture.md)  
-> 状态：**已实现**（Claude Code 工作台 + Orchestrator/Worker + 结构化验证 + MCP 执行链硬化）  
-> 最后更新：2026-06-08
+> 状态：**已实现**（Claude Code 工作台 + Scheduler/Worker/Reviewer DAG + 可拖拽三栏布局 + 结构化验证 + MCP 执行链硬化）  
+> 最后更新：2026-06-09
 
 ---
 
@@ -12,9 +12,9 @@
 
 - 绑定本地/服务端工作区（Maven / Python / Node / 纯静态 HTML）
 - Agent **自主**完成：建文件 → 写代码 → 验证 → 读报错 → 修复 → 交付
-- 三栏 UI：文件树 | 预览/Diff | 对话 + 子任务面板 | 底部终端 + 验证条
+- 三栏 UI（`CodingWorkspaceLayout` 可拖拽）：文件树 | 预览/Diff | 对话 + 子任务面板 | 底部终端 + 验证条
 - 可配置 **Skill**、**Stack Profile**、**项目规则**、**审批模式**、**MCP** 扩展
-- **Orchestrator** 可委派子任务给 **Worker** 异步执行
+- **Scheduler** 维护 DAG，委派 **Worker** 写代码、**Reviewer** 只读审查（PostgreSQL `t_orchestration_task`）
 
 ---
 
@@ -455,7 +455,9 @@ coding:
 | metadata | JSON：stackId, skillId, language, approvalMode |
 | result_summary | 交付摘要或最近命令输出 |
 
-**子任务**：当前为内存注册表（`CodingSubtaskServiceImpl`），无 DB 持久化。
+**编排任务表**：`t_orchestration_task`（DAG 节点：role / status / depends_on / goal / constraints 等）
+
+**子任务 API**：`CodingSubtaskServiceImpl` 委托 `OrchestrationTaskService`，读写 `t_orchestration_task`（非内存注册表）。
 
 ---
 
@@ -463,9 +465,10 @@ coding:
 
 | 项 | 状态 |
 |----|------|
-| 三栏工作台 + Diff SSE | ✅ |
+| 三栏工作台 + 可拖拽布局（`CodingWorkspaceLayout`）+ Diff SSE | ✅ |
 | Agent 推理-工具-观察闭环 | ✅ |
 | Skill + Stack Profile + 脚手架/检测 | ✅ |
+| Scheduler + Worker + Reviewer DAG 编排（PostgreSQL） | ✅ |
 | Orchestrator + Worker 异步子 Agent | ✅ |
 | CodingPromptComposer 抽出 | ✅ |
 | coding_search_tools（grep/patch） | ✅ |
@@ -476,7 +479,7 @@ coding:
 | RealtimeNotifier 统一 SSE | ✅ |
 | mark_coding_complete + 交付摘要 | ✅ |
 | @file 引用 + 项目规则 | ✅ |
-| 子任务 DB 持久化 | ⬜ |
+| 子任务 DB 持久化（`t_orchestration_task`） | ✅ |
 | 纯 HTML Stack Profile | ⬜ |
 | Agent 侧通用 shell 工具（非 REST） | ⬜ |
 | Skill 管理 UI | ⬜ |

@@ -3,11 +3,15 @@ package com.kama.jchatmind.coding.model.dto;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kama.jchatmind.coding.model.enums.CodingApprovalMode;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class CodingTaskMetadata {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

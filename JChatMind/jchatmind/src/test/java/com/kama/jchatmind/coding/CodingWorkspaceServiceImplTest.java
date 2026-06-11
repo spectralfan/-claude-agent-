@@ -75,6 +75,20 @@ class CodingWorkspaceServiceImplTest {
     }
 
     @Test
+    void listDirectoryTreeForTask_shouldWalkNestedDirs() throws Exception {
+        Path src = projectRoot.resolve("src/main");
+        Files.createDirectories(src);
+        Files.writeString(src.resolve("App.java"), "class App {}");
+        CodingTask task = CodingTask.builder()
+                .workspaceRoot(projectRoot.toString())
+                .workspacePath(".")
+                .build();
+        String tree = service.listDirectoryTreeForTask(task, ".", 3);
+        assertTrue(tree.contains("[D] src"));
+        assertTrue(tree.contains("App.java"));
+    }
+
+    @Test
     void readFileForTask_shouldReturnContent() throws Exception {
         CodingTask task = CodingTask.builder()
                 .workspaceRoot(projectRoot.toString())

@@ -13,4 +13,6 @@ public class StackVerifyCommandDTO {
     private String goal;
     /** shell 类型时使用，如 pytest -q */
     private String command;
+    /** file 类型时使用，如 index.html */
+    private String path;
 }

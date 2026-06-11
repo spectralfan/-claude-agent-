@@ -331,6 +331,13 @@ const CodingView: React.FC = () => {
           appendLog("started", p.statusText || "任务已创建");
           refreshTaskBySession().catch(() => undefined);
           break;
+        case "CODING_STACK_DETECTED":
+          appendLog(
+            "stack",
+            p.statusText || `已识别技术栈: ${p.stackId ?? "unknown"}`,
+          );
+          refreshTaskBySession().catch(() => undefined);
+          break;
         case "CODING_APPROVAL_REQUIRED":
           appendLog("approval", `需要审批: ${p.detail ?? ""}`);
           setApprovalCommand(p.detail ?? "");
@@ -698,7 +705,11 @@ const CodingView: React.FC = () => {
             </Text>
           </div>
           {task && <Tag color={STATUS_COLOR[task.status]}>{task.status}</Tag>}
-          {task?.stackId && <Tag color="geekblue">{task.stackId}</Tag>}
+          {task?.stackId && (
+            <Tag color="geekblue">
+              {currentStack?.displayName ?? task.stackId}
+            </Tag>
+          )}
           {task?.language && <Tag>{task.language}</Tag>}
           {task?.skillId && <Tag color="blue">Skill: {task.skillId}</Tag>}
           {task?.approvalMode && <Tag>{task.approvalMode}</Tag>}

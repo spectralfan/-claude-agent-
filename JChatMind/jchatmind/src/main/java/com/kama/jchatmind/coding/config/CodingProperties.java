@@ -25,6 +25,8 @@ public class CodingProperties {
     private Command command = new Command();
     private Scaffold scaffold = new Scaffold();
     private Delivery delivery = new Delivery();
+    private Stack stack = new Stack();
+    private Verify verify = new Verify();
 
     @Data
     public static class Delivery {
@@ -51,6 +53,14 @@ public class CodingProperties {
         ));
         /** @file 引用注入单文件最大字符数 */
         private int atFileMaxChars = 12_000;
+        /** list_coding_directory_tree / list_workspace_dir 默认深度 */
+        private int listDirDefaultDepth = 2;
+        /** 目录树列举最大深度 */
+        private int listDirMaxDepth = 5;
+        /** read_coding_files 单次最多文件数 */
+        private int batchReadMaxFiles = 10;
+        /** read_coding_files 单文件最大字符数 */
+        private int batchReadMaxCharsPerFile = 32_000;
         /**
          * 允许用户在网页上选择的工作区列表（本地 IDEA/Maven 工程根目录）。
          * 为空时仅可使用 {@link #root}。
@@ -104,6 +114,20 @@ public class CodingProperties {
     public static class Command {
         /** MCP / 命令输出 SSE 与工具返回的最大字符数 */
         private int outputMaxChars = 2000;
+    }
+
+    @Data
+    public static class Stack {
+        /** 创建任务或对话时根据 pom.xml / pyproject.toml / package.json 等自动识别技术栈 */
+        private boolean autoDetect = true;
+    }
+
+    @Data
+    public static class Verify {
+        /** mcp | sandbox | auto（auto=MCP 优先，失败可降级 sandbox） */
+        private String backend = "auto";
+        /** backend=auto 时 MCP 不可用是否降级 SandboxCommandRunner */
+        private boolean fallbackEnabled = true;
     }
 
     @Data

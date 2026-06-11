@@ -8,8 +8,11 @@ import com.kama.jchatmind.coding.model.enums.CodingTaskStatus;
 import com.kama.jchatmind.coding.service.CodingMessageEnricher;
 import com.kama.jchatmind.coding.service.CodingTaskAutoProvisioner;
 import com.kama.jchatmind.coding.service.CodingTaskService;
+import com.kama.jchatmind.coding.model.dto.CodingTaskMetadata;
 import com.kama.jchatmind.memory.integration.MemoryIntegration;
 import com.kama.jchatmind.event.ChatEvent;
+import com.kama.jchatmind.message.SseMessage;
+import com.kama.jchatmind.realtime.RealtimeNotifier;
 import lombok.AllArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
@@ -25,6 +28,7 @@ public class ChatEventListener {
     private final CodingTaskAutoProvisioner codingTaskAutoProvisioner;
     private final CodingMessageEnricher codingMessageEnricher;
     private final MemoryIntegration memoryIntegration;
+    private final RealtimeNotifier realtimeNotifier;
 
     @Async
     @EventListener
@@ -34,7 +38,19 @@ public class ChatEventListener {
             CodingTask active = codingTaskAutoProvisioner.ensureActiveTask(
                     event.getSessionId(), event.getAgentId());
             if (active != null) {
-                codingTaskService.applyDetectedStackIfAbsent(active);
+                boolean stackDetected = codingTaskService.applyDetectedStackIfAbsent(active);
+                if (stackDetected) {
+                    CodingTaskMetadata meta = CodingTaskMetadata.fromJson(active.getMetadata());
+                    realtimeNotifier.tryPublish(event.getSessionId(), SseMessage.builder()
+                            .type(SseMessage.Type.CODING_STACK_DETECTED)
+                            .payload(SseMessage.Payload.builder()
+                                    .taskId(active.getId())
+                                    .stackId(meta.getStackId())
+                                    .detail(meta.getLanguage())
+                                    .statusText("已自动识别技术栈: " + meta.getStackId())
+                                    .build())
+                            .build());
+                }
                 if (CodingTaskStatus.PENDING.getCode().equals(active.getStatus())) {
                     codingTaskService.markRunning(active.getId());
                 }

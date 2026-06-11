@@ -188,6 +188,11 @@ coding:
     auto-continue: true
     max-auto-continuations: 30
     pool-size: 4
+
+# Session 文件存储配置（thread.jsonl / notes.md）
+session:
+  store-root: .jchatmind/sessions
+
   delivery:
     require-verification: false
 

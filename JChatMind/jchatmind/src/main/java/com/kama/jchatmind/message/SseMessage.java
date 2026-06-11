@@ -42,6 +42,8 @@ public class SseMessage {
         private String role;
         /** 依赖任务 ID，逗号分隔 */
         private String dependsOn;
+        /** 自动识别的技术栈 Profile id */
+        private String stackId;
     }
 
     @Data
@@ -74,6 +76,8 @@ public class SseMessage {
         CODING_FAILED,
         CODING_SUBTASK_STARTED,
         CODING_SUBTASK_COMPLETED,
-        CODING_SUBTASK_FAILED
+        CODING_SUBTASK_FAILED,
+        /** 工作区特征文件自动识别出 stackId */
+        CODING_STACK_DETECTED
     }
 }

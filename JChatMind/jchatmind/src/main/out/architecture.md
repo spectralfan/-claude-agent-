@@ -1,6 +1,6 @@
 # JChatMind 软件架构文档
 
-> 版本：2026-06-01（Phase 5 — Scheduler + DAG 并行编排 + 自动 Reviewer + PostgreSQL 任务图）  
+> 版本：2026-06-09（Phase 5 — Scheduler + DAG 并行编排 + 自动 Reviewer + PostgreSQL 任务图；Graphify 图谱已同步至 commit `bdbb64d`）  
 > 代码根目录：`JChatMind/jchatmind`（后端）、`JChatMind/ui`（前端）  
 > 架构查询：优先使用 Graphify 知识图谱（`graphify-out/graph.json` + `user-graphify` MCP）
 
@@ -39,10 +39,11 @@ JChatMindv2/
 │   │       └── out/                 # 架构文档（本目录）
 │   └── ui/                          # React + Vite 前端 (:5173 dev)
 │       └── src/
-├── graphify-out/                    # Graphify 代码知识图谱（AST + 语义，本地生成）
-│   ├── graph.json
-│   ├── manifest.json
-│   └── .graphify_analysis.json
+├── graphify-out/                    # Graphify 代码知识图谱（AST + 语义，本地生成；见 §19）
+│   ├── graph.json                   # 3414 节点 / 6566 links（commit bdbb64d）
+│   ├── manifest.json                # 434 源文件索引
+│   ├── .graphify_analysis.json      # 277 社区聚类
+│   └── cache/                       # ast/ + semantic/ 增量子图缓存
 └── workspace/                       # Coding 默认沙箱（可配置）
 ```
 
@@ -231,7 +232,7 @@ sequenceDiagram
 
 1. **Agent 配置**（DB `agent` 表 → `AgentDTO`）
 2. **记忆**（Memory Hub 优先，否则 `chat_message` 最近 N 条）
-3. **知识库列表**（`allowedKbs` → 供推理 prompt 引用）
+3. **知识库列表**（`allowedKbs` → 供推理 prompt 引用；**活跃 Coding 任务时为空**）
 4. **本地工具**（`ToolFacadeService` FIXED + `allowedTools` OPTIONAL）
 5. **MCP 工具**（`mcp.enabled=true` 时按白名单追加）
 6. **System Prompt 增强**（有 Coding 任务时，委托 `CodingPromptComposer`）：
@@ -240,7 +241,9 @@ sequenceDiagram
    - **Coding 自主开发协议**（栈 Profile、推荐工具、验证/交付说明）
 7. **Coding 步数**：活动任务存在时 `maxSteps = coding.agent.max-loop-steps`（默认 **100**）
 8. **消息窗口**：Coding/子 Agent 使用 `max(messageLength, memory-window)` + `ToolAwareMessageWindowChatMemory`
-9. **Memory 补充**：Coding 会话跳过 RECENT/ARCHIVE 向量注入（`memory.hub.supplemental-enabled: false`），省 token/Ollama
+9. **Memory 补充**：普通聊天由 `supplemental-enabled` 控制；**Coding 活跃任务**由 `coding-supplemental-enabled` 注入 RECENT/ARCHIVE（同会话恢复长期记忆）；Coding 时剔除 `KnowledgeTool`
+10. **工具结果压缩**：`ToolResultCompactor` 在 `loadChatMessageHistory` 中对较早 tool round 按策略压缩（`STATUS_ONLY` / `HEAD_TAIL` / `MAX_CHARS`）；最近 `agent.tool-result.preserve-recent-rounds` 轮保持完整；DB 与 API 仍返回全文，Memory Hub 镜像使用压缩摘要
+11. **批量工具**：Worker 提供 `list_coding_directory_tree`（递归列目录）、`read_coding_files`（批量读文件）；`JChatMind.act()` 已支持单轮多个 `tool_calls` 并行执行；Prompt 引导合并独立操作为一轮
 
 **循环依赖说明**：`CodingSubtaskExecutorImpl` 通过 `@Lazy JChatMindFactory` 注入，避免与 `ToolFacade → DelegateCodingTaskTool` 形成启动死锁；`spring.main.allow-circular-references: true` 作为兜底。
 
@@ -335,7 +338,7 @@ flowchart LR
 ### 9.2 与 Agent 集成
 
 - **写路径**：`ChatMessageFacadeServiceImpl.mirrorToMemoryHub()` 将 user/assistant/tool 镜像到 WORKING 层
-- **读路径**：`chat_message` 保留完整 tool 链；`buildSupplementalContext()` 可注入 RECENT/ARCHIVE（Coding 会话默认关闭 `supplemental-enabled`）
+- **读路径**：`chat_message` 保留完整 tool 链；`buildSupplementalContext()` 注入 RECENT/ARCHIVE（普通聊天看 `supplemental-enabled`；Coding 活跃任务看 `coding-supplemental-enabled`）
 - **会话结束**：`MemoryIntegration.onSessionEnd()` → 层级调整 + `MemoryAgent` 异步整理
 - **向量**：Ollama `bge-m3`（`memory.hub.ollama-base-url`）
 - 诊断：`GET /api/memory/status`、`GET /api/memory/stats/{sessionId}`
@@ -520,10 +523,11 @@ Maven 执行成功/失败后 **不再** 将任务置为 `COMPLETED`（避免 Age
 ### 14.2 分层
 
 ```
-api/http.ts + api.ts + api/sse.ts   → REST / SSE 客户端
-hooks/                              → useAgents, useSessionSse, …
-components/views/CodingView.tsx     → 三栏工作台 + 验证面板 + MCP 状态
-components/coding/                  → FileTree, FilePreview, Terminal, SubtaskPanel, …
+api/http.ts + api.ts + api/sse.ts          → REST / SSE 客户端
+hooks/                                     → useAgents, useSessionSse, …
+components/coding/CodingWorkspaceLayout.tsx → 可拖拽三栏 + localStorage 持久化 + 窄屏 Tab 兜底
+components/views/CodingView.tsx            → 接入布局 + 验证面板 + MCP 状态
+components/coding/                           → FileTree, FilePreview, Terminal, SubtaskPanel, …
 ```
 
 ### 14.3 实时集成
@@ -575,7 +579,8 @@ coding:
 
 memory:
   hub:
-    supplemental-enabled: false   # Coding 会话跳过向量补充
+    supplemental-enabled: false
+    coding-supplemental-enabled: true   # Coding 同会话恢复注入 RECENT/ARCHIVE
 ```
 
 ---
@@ -662,17 +667,31 @@ memory:
 
 | 路径 | 说明 |
 |------|------|
-| `graphify-out/graph.json` | 主图（~3100 节点、~5800 边、234 社区） |
-| `graphify-out/manifest.json` | 已索引源文件清单（399 文件） |
-| `graphify-out/.graphify_analysis.json` | 社区聚类（如社区 0=Factory/编排、2=Proxy 启动、10=command-runner） |
+| `graphify-out/graph.json` | 主图（**3414** 节点、**6566** 条 `links`、**277** 社区；`built_at_commit: bdbb64d`） |
+| `graphify-out/manifest.json` | 已索引源文件清单（**434** 文件，含 orchestration / `CodingWorkspaceLayout` / `run-backend.ps1` 等） |
+| `graphify-out/.graphify_analysis.json` | 社区聚类与成员列表（`communities` 键 → 节点 ID 数组） |
+| `graphify-out/cache/ast/`、`cache/semantic/` | 单文件 AST / 语义子图缓存（增量更新） |
+
+**图模型**：`graph.json` 为 NetworkX node-link 格式（边字段名为 `links`，非 `edges`）；节点含 `community`、`_origin`（`ast` / `semantic`）、`source_file`。
+
+**代表性社区**（按 `.graphify_analysis.json` 聚类）：
+
+| 社区 ID | 规模（约） | 主题 | 代表节点 |
+|---------|-----------|------|----------|
+| 0 | 99 | Agent Factory + 角色工具过滤 | `JChatMindFactory`、`CodingAgentRoles` |
+| 2 | 75 | 前端 REST 客户端 | `api.ts` |
+| 7 | 59 | 编排事件与 Chat 触发链 | `ChatEvent`、`ApplicationEventPublisher` |
+| 8 | 58 | MCP 命令执行器 | `command-runner.mjs` |
+| 21 / 100 | 29 / 11 | MCP Proxy 启动 | `McpProxyLauncher`、`McpProxyApplicationContextInitializer` |
+| 24 | 28 | 结构化验证 | `CodingVerifyTools` |
 
 **查询方式**（Cursor 已配置 `user-graphify` MCP）：
 
 - `query_graph` — 自然语言 BFS/DFS 子图检索
 - `get_community` / `get_node` / `god_nodes` — 社区、节点、枢纽
-- 改代码后：`graphify update .`（AST-only，无 API 成本）
+- 改代码后：`graphify update .`（AST-only，无 API 成本；全量语义重建按需加 `--semantic`）
 
-**图谱枢纽**（度数 Top）：`JChatMind`、`JChatMindFactory`、`CodingWorkspaceService`、`McpProxyRuntime`、`CodingVerifyTools`、`RecordingToolCallback`。
+**图谱枢纽**（`links` 度数 Top，2026-06-09）：`api.ts`（112）、`JChatMindFactory`（44）、`CodingWorkspaceService`（43）、`OrchestrationTaskService`（42）、`JChatMind`（39）、`command-runner.mjs`（51）、`CodingView.tsx`（53）、`CodingVerifyTools`（34）。
 
 ---
 

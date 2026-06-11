@@ -19,6 +19,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -176,6 +177,48 @@ public class CodingWorkspaceServiceImpl implements CodingWorkspaceService {
                     .build();
         } catch (IOException e) {
             throw new IllegalStateException("读取文件失败: " + relativePath, e);
+        }
+    }
+
+    @Override
+    public String listDirectoryTreeForTask(CodingTask task, String relativePath, int maxDepth) {
+        Path base = resolveForTask(task);
+        String rel = relativePath == null || relativePath.isBlank() ? "." : relativePath;
+        Path dir = resolveRelativePath(base, rel);
+        if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+            return "错误：目录不存在 - " + rel;
+        }
+        int depth = Math.max(0, maxDepth);
+        depth = Math.min(depth, codingProperties.getWorkspace().getListDirMaxDepth());
+        Set<String> ignoreDirs = codingProperties.getWorkspace().getIgnoreDirs().stream()
+                .collect(Collectors.toSet());
+        List<String> lines = new ArrayList<>();
+        try {
+            walkDirectoryTree(dir, base, 0, depth, ignoreDirs, lines);
+        } catch (IOException e) {
+            throw new IllegalStateException("列举目录树失败: " + rel, e);
+        }
+        return lines.isEmpty() ? "(空目录)" : String.join("\n", lines);
+    }
+
+    private void walkDirectoryTree(Path dir, Path base, int currentDepth, int maxDepth,
+                                   Set<String> ignoreDirs, List<String> lines) throws IOException {
+        if (currentDepth > maxDepth) {
+            return;
+        }
+        try (Stream<Path> stream = Files.list(dir)) {
+            List<Path> children = stream
+                    .filter(p -> !shouldIgnore(p, ignoreDirs))
+                    .sorted(Comparator.comparing(p -> p.getFileName().toString().toLowerCase()))
+                    .toList();
+            for (Path child : children) {
+                String rel = toRelativePath(base, child);
+                boolean isDir = Files.isDirectory(child);
+                lines.add((isDir ? "[D] " : "[F] ") + rel);
+                if (isDir && currentDepth < maxDepth) {
+                    walkDirectoryTree(child, base, currentDepth + 1, maxDepth, ignoreDirs, lines);
+                }
+            }
         }
     }
 

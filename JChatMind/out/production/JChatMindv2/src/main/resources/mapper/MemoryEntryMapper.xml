@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.memory.mapper.MemoryEntryMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.memory.model.entity.MemoryEntry">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="memoryType" column="memory_type" jdbcType="VARCHAR"/>
+        <result property="role" column="role" jdbcType="VARCHAR"/>
+        <result property="content" column="content" jdbcType="VARCHAR"/>
+        <result property="summary" column="summary" jdbcType="VARCHAR"/>
+        <result property="importance" column="importance" jdbcType="INTEGER"/>
+        <result property="memoryTags" column="memory_tags"
+                typeHandler="com.kama.jchatmind.typehandler.StringListTypeHandler"/>
+        <result property="toolCalls" column="tool_calls" jdbcType="VARCHAR"/>
+        <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+        <result property="archivedAt" column="archived_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Select_Column_List">
+        id,
+        session_id,
+        memory_type,
+        role,
+        content,
+        summary,
+        importance,
+        memory_tags,
+        tool_calls::text AS tool_calls,
+        metadata::text AS metadata,
+        created_at,
+        updated_at,
+        archived_at
+    </sql>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.memory.model.entity.MemoryEntry"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO t_memory_entry
+        (session_id,
+         memory_type,
+         role,
+         content,
+         summary,
+         importance,
+         memory_tags,
+         tool_calls,
+         metadata)
+        VALUES (#{sessionId},
+                #{memoryType},
+                #{role},
+                #{content},
+                #{summary},
+                COALESCE(#{importance}, 0),
+                #{memoryTags, jdbcType=ARRAY, typeHandler=com.kama.jchatmind.typehandler.StringListTypeHandler},
+                CAST(#{toolCalls} AS jsonb),
+                CAST(#{metadata} AS jsonb))
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_memory_entry
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <select id="selectRecentByType" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM (
+            SELECT *
+            FROM t_memory_entry
+            WHERE session_id = #{sessionId}
+              AND memory_type = #{memoryType}
+            ORDER BY created_at DESC
+            LIMIT #{limit}
+        ) AS recent
+        ORDER BY created_at ASC
+    </select>
+
+    <select id="selectByImportance" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_memory_entry
+        WHERE session_id = #{sessionId}
+          AND memory_type = #{memoryType}
+        <if test="minImportance != null">
+            AND importance &gt;= #{minImportance}
+        </if>
+        ORDER BY importance DESC, created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectIdleByType" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_memory_entry
+        WHERE session_id = #{sessionId}
+          AND memory_type = #{memoryType}
+          AND updated_at &lt; #{before}
+        ORDER BY updated_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countByType" resultType="long">
+        SELECT COUNT(*)
+        FROM t_memory_entry
+        WHERE session_id = #{sessionId}
+          AND memory_type = #{memoryType}
+    </select>
+
+    <update id="updateById" parameterType="com.kama.jchatmind.memory.model.entity.MemoryEntry">
+        UPDATE t_memory_entry
+        <set>
+            <if test="memoryType != null">memory_type = #{memoryType},</if>
+            <if test="role != null">role = #{role},</if>
+            <if test="content != null">content = #{content},</if>
+            <if test="summary != null">summary = #{summary},</if>
+            <if test="importance != null">importance = #{importance},</if>
+            <if test="memoryTags != null">
+                memory_tags = #{memoryTags, jdbcType=ARRAY, typeHandler=com.kama.jchatmind.typehandler.StringListTypeHandler},
+            </if>
+            <if test="toolCalls != null">tool_calls = CAST(#{toolCalls} AS jsonb),</if>
+            <if test="metadata != null">metadata = CAST(#{metadata} AS jsonb),</if>
+            <if test="archivedAt != null">archived_at = #{archivedAt},</if>
+            updated_at = NOW()
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <update id="updateSummary">
+        UPDATE t_memory_entry
+        SET summary = #{summary}, updated_at = NOW()
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <update id="updateImportanceAndTags">
+        UPDATE t_memory_entry
+        SET importance = #{importance},
+            memory_tags = #{tags, jdbcType=ARRAY, typeHandler=com.kama.jchatmind.typehandler.StringListTypeHandler},
+            updated_at = NOW()
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <update id="updateMemoryType">
+        UPDATE t_memory_entry
+        SET memory_type = #{memoryType}, updated_at = NOW()
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <update id="archive">
+        UPDATE t_memory_entry
+        SET memory_type = 'ARCHIVE',
+            archived_at = #{archivedAt},
+            updated_at = NOW()
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM t_memory_entry WHERE id = CAST(#{id} AS uuid)
+    </delete>
+</mapper>

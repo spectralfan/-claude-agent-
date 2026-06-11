@@ -1,5 +1,4 @@
 package com.kama.jchatmind.model.vo;
-
 import lombok.Builder;
 import lombok.Data;
 
@@ -9,4 +8,5 @@ public class ChatSessionVO {
     private String id;
     private String agentId;
     private String title;
+    private String type;
 }

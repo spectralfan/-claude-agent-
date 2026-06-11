@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.memory.mapper.MemoryTaskMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.memory.model.entity.MemoryTask">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="taskType" column="task_type" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="priority" column="priority" jdbcType="INTEGER"/>
+        <result property="inputData" column="input_data" jdbcType="VARCHAR"/>
+        <result property="resultData" column="result_data" jdbcType="VARCHAR"/>
+        <result property="errorMessage" column="error_message" jdbcType="VARCHAR"/>
+        <result property="startedAt" column="started_at" jdbcType="TIMESTAMP"/>
+        <result property="completedAt" column="completed_at" jdbcType="TIMESTAMP"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Select_Column_List">
+        id,
+        task_type,
+        session_id,
+        status,
+        priority,
+        input_data::text AS input_data,
+        result_data::text AS result_data,
+        error_message,
+        started_at,
+        completed_at,
+        created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.memory.model.entity.MemoryTask"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO t_memory_task
+        (task_type,
+         session_id,
+         status,
+         priority,
+         input_data,
+         result_data,
+         error_message)
+        VALUES (#{taskType},
+                #{sessionId},
+                COALESCE(#{status}, 'pending'),
+                COALESCE(#{priority}, 5),
+                CAST(#{inputData} AS jsonb),
+                CAST(#{resultData} AS jsonb),
+                #{errorMessage})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_memory_task
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <select id="selectPending" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_memory_task
+        WHERE status = 'pending'
+        ORDER BY priority DESC, created_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE t_memory_task
+        <set>
+            <if test="status != null">status = #{status},</if>
+            <if test="startedAt != null">started_at = #{startedAt},</if>
+            <if test="completedAt != null">completed_at = #{completedAt},</if>
+            <if test="resultData != null">result_data = CAST(#{resultData} AS jsonb),</if>
+            <if test="errorMessage != null">error_message = #{errorMessage},</if>
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+</mapper>

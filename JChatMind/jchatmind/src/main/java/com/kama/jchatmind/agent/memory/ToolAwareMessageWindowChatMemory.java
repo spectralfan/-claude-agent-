@@ -114,7 +114,7 @@ public final class ToolAwareMessageWindowChatMemory implements ChatMemory {
     /**
      * 将非钉住消息切成 round：assistant+tool_calls 与后续连续 tool 响应不可拆分。
      */
-    static List<List<Integer>> partitionRoundIndices(List<Message> messages, Set<Integer> pinned) {
+    public static List<List<Integer>> partitionRoundIndices(List<Message> messages, Set<Integer> pinned) {
         List<List<Integer>> rounds = new ArrayList<>();
         int i = 0;
         while (i < messages.size()) {

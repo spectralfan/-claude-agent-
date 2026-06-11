@@ -47,26 +47,70 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
   );
 };
 
-// 工具响应展示组件（可折叠）
+type ToolOutcome = "success" | "failure" | "unknown";
+
+function parseToolOutcome(responseData: string): {
+  outcome: ToolOutcome;
+  summary: string;
+} {
+  const text = responseData.trim();
+  const exitMatch = /exit\s*code\s*:\s*(\d+)/i.exec(text);
+  if (exitMatch) {
+    const code = Number(exitMatch[1]);
+    if (code === 0) {
+      return { outcome: "success", summary: "成功" };
+    }
+    const reasonLine = text
+      .slice(exitMatch.index! + exitMatch[0].length)
+      .split("\n")
+      .map((l) => l.trim())
+      .find(Boolean);
+    return {
+      outcome: "failure",
+      summary: reasonLine ? `失败: ${reasonLine}` : `失败 (exit ${code})`,
+    };
+  }
+  if (text.startsWith("成功") || /^ok\b/i.test(text)) {
+    return { outcome: "success", summary: "成功" };
+  }
+  if (text.startsWith("错误") || /^failed\b/i.test(text) || /error:/i.test(text)) {
+    const firstLine = text.split("\n")[0]?.trim() ?? text;
+    return { outcome: "failure", summary: firstLine };
+  }
+  return { outcome: "unknown", summary: "已完成" };
+}
+
+// 工具响应展示组件（可折叠，默认仅显示成功/失败摘要）
 const ToolResponseDisplay: React.FC<{ toolResponse: ToolResponse }> = ({
   toolResponse,
 }) => {
   const [expanded, setExpanded] = useState(false);
-  
+
   let parsedData: unknown = null;
   let isJson = false;
-  let dataPreview = "";
-  
+
   try {
     parsedData = JSON.parse(toolResponse.responseData);
     isJson = true;
-    const jsonStr = JSON.stringify(parsedData);
-    dataPreview = jsonStr.length > 100 ? jsonStr.slice(0, 100) + "..." : jsonStr;
   } catch {
-    dataPreview = toolResponse.responseData.length > 100 
-      ? toolResponse.responseData.slice(0, 100) + "..." 
-      : toolResponse.responseData;
+    // 非 JSON，展开时原样展示
   }
+
+  const { outcome, summary } = parseToolOutcome(toolResponse.responseData);
+  const outcomeColor =
+    outcome === "success"
+      ? "text-green-600"
+      : outcome === "failure"
+        ? "text-red-600"
+        : "text-gray-600";
+  const OutcomeIcon =
+    outcome === "failure" ? ToolOutlined : CheckCircleOutlined;
+  const iconColor =
+    outcome === "success"
+      ? "text-green-500"
+      : outcome === "failure"
+        ? "text-red-500"
+        : "text-gray-400";
 
   return (
     <div className="my-1.5 text-xs">
@@ -79,10 +123,10 @@ const ToolResponseDisplay: React.FC<{ toolResponse: ToolResponse }> = ({
         ) : (
           <RightOutlined className="text-gray-400" />
         )}
-        <CheckCircleOutlined className="text-green-500" />
-        <span className="font-mono text-green-600">{toolResponse.name}</span>
+        <OutcomeIcon className={iconColor} />
+        <span className="font-mono text-gray-700">{toolResponse.name}</span>
         <span className="text-gray-400">·</span>
-        <span className="text-gray-500 truncate flex-1">{dataPreview}</span>
+        <span className={`truncate flex-1 ${outcomeColor}`}>{summary}</span>
       </div>
       {expanded && (
         <div className="ml-5 mt-1.5 p-2 bg-gray-50 rounded border border-gray-200">

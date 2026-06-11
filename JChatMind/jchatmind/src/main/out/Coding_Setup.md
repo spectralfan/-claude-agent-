@@ -113,6 +113,39 @@ Agent 预设 `coding-agent-preset.json` 已勾选 `coding_verify_tools` 并在 s
 
 ---
 
+## 1.3 技术栈自动识别 + 同会话长期记忆
+
+### 技术栈自动识别
+
+进入 Coding 对话后，首条用户消息触发 `WorkspaceDetectService`：根据 `pom.xml`、`package.json`、`pyproject.toml` 等特征文件写入任务 `stackId` / `language`，并推送 SSE `CODING_STACK_DETECTED`。创建任务时也可通过 `autoDetectStack` 预识别。
+
+```yaml
+coding:
+  stack:
+    auto-detect: true   # createTask 默认是否自动识别
+```
+
+预览 API：`POST /api/coding/workspace/detect`（前端选工作区时的提示条）。
+
+### 同会话恢复与 Memory Hub
+
+AI Coding **不使用知识库 RAG**（活跃任务时剥离 `KnowledgeTool` 与 `allowedKbs`）。上下文来自：
+
+- 工作区直读（`coding_file_tools` / `coding_search_tools`）
+- 项目规则文件（`JCHATMIND.md` 等）
+- `chat_message` 最近 80 轮
+- **Memory Hub** RECENT/ARCHIVE 补充（从历史 `/coding/{sessionId}` 恢复后继续对话时注入）
+
+```yaml
+memory:
+  hub:
+    enabled: true
+    supplemental-enabled: false          # 普通聊天不注入
+    coding-supplemental-enabled: true    # Coding 活跃任务时注入长期记忆
+```
+
+---
+
 ## 2. MCP（多语言命令验证）
 
 ### 2.0 安装 uv（Python 栈推荐）

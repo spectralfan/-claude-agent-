@@ -39,12 +39,16 @@ public class CodingTaskAutoProvisionerImpl implements CodingTaskAutoProvisioner 
         CreateCodingTaskRequest request = buildCreateRequest(sessionId, agentId);
         String taskId = codingTaskService.createTask(request);
         CodingTaskDTO dto = codingTaskService.getTask(taskId);
+        String statusText = dto.getStackId() != null
+                ? "Coding 任务已创建，技术栈: " + dto.getStackId()
+                : "Coding 任务已自动创建";
         realtimeNotifier.tryPublish(sessionId, SseMessage.builder()
                 .type(SseMessage.Type.CODING_STARTED)
                 .payload(SseMessage.Payload.builder()
                         .taskId(taskId)
+                        .stackId(dto.getStackId())
                         .workspace(dto.getWorkspaceRoot() + "/" + dto.getWorkspacePath())
-                        .statusText("Coding 任务已自动创建")
+                        .statusText(statusText)
                         .build())
                 .build());
         log.info("已自动创建 Coding 任务 session={} taskId={}", sessionId, taskId);

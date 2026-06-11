@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.memory.mapper.MemoryEmbeddingMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.memory.model.entity.MemoryEmbedding">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="memoryEntryId" column="memory_entry_id" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="contentHash" column="content_hash" jdbcType="VARCHAR"/>
+        <result property="embeddingModel" column="embedding_model" jdbcType="VARCHAR"/>
+        <result property="embedding" column="embedding" jdbcType="OTHER"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <!-- 复用 MemoryEntryMapper 的 MemoryEntry 映射结构 -->
+    <resultMap id="EntryResultMap" type="com.kama.jchatmind.memory.model.entity.MemoryEntry">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="memoryType" column="memory_type" jdbcType="VARCHAR"/>
+        <result property="role" column="role" jdbcType="VARCHAR"/>
+        <result property="content" column="content" jdbcType="VARCHAR"/>
+        <result property="summary" column="summary" jdbcType="VARCHAR"/>
+        <result property="importance" column="importance" jdbcType="INTEGER"/>
+        <result property="memoryTags" column="memory_tags"
+                typeHandler="com.kama.jchatmind.typehandler.StringListTypeHandler"/>
+        <result property="toolCalls" column="tool_calls" jdbcType="VARCHAR"/>
+        <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+        <result property="archivedAt" column="archived_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.memory.model.entity.MemoryEmbedding"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO t_memory_embedding
+        (memory_entry_id,
+         session_id,
+         content_hash,
+         embedding_model,
+         embedding)
+        VALUES (CAST(#{memoryEntryId} AS uuid),
+                #{sessionId},
+                #{contentHash},
+                #{embeddingModel},
+                #{embedding}::vector)
+    </insert>
+
+    <select id="selectByContentHash" resultMap="BaseResultMap">
+        SELECT id,
+               memory_entry_id,
+               session_id,
+               content_hash,
+               embedding_model,
+               embedding,
+               created_at
+        FROM t_memory_embedding
+        WHERE content_hash = #{contentHash}
+    </select>
+
+    <select id="countByContentHash" resultType="long">
+        SELECT COUNT(*)
+        FROM t_memory_embedding
+        WHERE content_hash = #{contentHash}
+    </select>
+
+    <select id="similaritySearch" resultMap="EntryResultMap">
+        <![CDATA[
+        SELECT e.id,
+               e.session_id,
+               e.memory_type,
+               e.role,
+               e.content,
+               e.summary,
+               e.importance,
+               e.memory_tags,
+               e.tool_calls::text AS tool_calls,
+               e.metadata::text AS metadata,
+               e.created_at,
+               e.updated_at,
+               e.archived_at
+        FROM t_memory_embedding emb
+        JOIN t_memory_entry e ON e.id = emb.memory_entry_id
+        WHERE emb.session_id = #{sessionId}
+        ORDER BY emb.embedding <=> #{vectorLiteral}::vector
+        LIMIT #{limit}
+        ]]>
+    </select>
+</mapper>

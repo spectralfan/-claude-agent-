@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.memory.mapper.MemorySessionMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.memory.model.entity.MemorySession">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="agentId" column="agent_id" jdbcType="VARCHAR"/>
+        <result property="userId" column="user_id" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="totalMessages" column="total_messages" jdbcType="INTEGER"/>
+        <result property="totalTokens" column="total_tokens" jdbcType="INTEGER"/>
+        <result property="lastActivityAt" column="last_activity_at" jdbcType="TIMESTAMP"/>
+        <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Select_Column_List">
+        id,
+        session_id,
+        agent_id,
+        user_id,
+        status,
+        total_messages,
+        total_tokens,
+        last_activity_at,
+        metadata::text AS metadata,
+        created_at,
+        updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.memory.model.entity.MemorySession"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO t_memory_session
+        (session_id,
+         agent_id,
+         user_id,
+         status,
+         total_messages,
+         total_tokens,
+         metadata)
+        VALUES (#{sessionId},
+                #{agentId},
+                #{userId},
+                COALESCE(#{status}, 'active'),
+                COALESCE(#{totalMessages}, 0),
+                COALESCE(#{totalTokens}, 0),
+                CAST(#{metadata} AS jsonb))
+    </insert>
+
+    <select id="selectBySessionId" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Select_Column_List"/>
+        FROM t_memory_session
+        WHERE session_id = #{sessionId}
+    </select>
+
+    <update id="updateActivity">
+        UPDATE t_memory_session
+        SET last_activity_at = #{lastActivityAt}, updated_at = NOW()
+        WHERE session_id = #{sessionId}
+    </update>
+
+    <update id="incrementCounters">
+        UPDATE t_memory_session
+        SET total_messages = COALESCE(total_messages, 0) + #{messageDelta},
+            total_tokens = COALESCE(total_tokens, 0) + #{tokenDelta},
+            last_activity_at = NOW(),
+            updated_at = NOW()
+        WHERE session_id = #{sessionId}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE t_memory_session
+        SET status = #{status}, updated_at = NOW()
+        WHERE session_id = #{sessionId}
+    </update>
+</mapper>

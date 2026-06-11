@@ -37,7 +37,7 @@
 - **结构化验证**：`coding_verify_tools` 优先于 MCP 拼 shell；`append_coding_file` 分块写入防 JSON 截断
 - **Proxy 提前启动**：`McpProxyApplicationContextInitializer`；`GET /api/coding/mcp-health` 自检
 - **编排自动续跑**：`OrchestratorContinuationService` + `coding.subagent.auto-continue`
-- **Graphify 知识图谱**：`graphify-out/` 离线代码图谱，架构查询优先 `query_graph`（Cursor MCP）
+- **Graphify 知识图谱**：`graphify-out/graph.json`（3414 节点 / 6566 links / 434 源文件），架构查询优先 `query_graph`（Cursor MCP）
 
 ---
 
@@ -76,7 +76,7 @@ JChatMindv2/
 
 详细架构见：`jchatmind/src/main/out/architecture.md`  
 联调指南见：`jchatmind/src/main/out/Coding_Setup.md`  
-代码知识图谱：`graphify-out/graph.json`（Graphify MCP `query_graph` 查询）
+代码知识图谱：`graphify-out/graph.json`（3414 节点，见 `architecture.md` §19；Graphify MCP `query_graph` 查询）
 
 ---
 

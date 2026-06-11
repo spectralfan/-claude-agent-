@@ -50,7 +50,7 @@ public class DelegateCodingTaskTool implements Tool {
             name = "delegate_coding_task",
             description = "将具体开发子任务委派给后台 Worker Agent 异步执行（兼容层）。"
                     + "goal 须为可独立完成的子目标（含验收标准）。"
-                    + "返回 taskId 后请用 list_orchestration_tasks 轮询直至 COMPLETED/FAILED。"
+                    + "委派后系统后台执行，勿 list 轮询；等待 [系统自动继续]。"
     )
     public String delegateCodingTask(String goal, String title) {
         if (!subagentProperties.isEnabled()) {
@@ -93,7 +93,7 @@ public class DelegateCodingTaskTool implements Tool {
                 + " taskId=" + created.getId()
                 + " status=" + created.getStatus()
                 + " title=" + created.getTitle()
-                + "。请使用 list_orchestration_tasks 查询进度。";
+                + "。系统后台执行，勿 list 轮询；等待 [系统自动继续]。";
     }
 
     private String resolveWorkerAgentId() {

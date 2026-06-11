@@ -1,7 +1,10 @@
 package com.kama.jchatmind.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.kama.jchatmind.agent.config.AgentToolResultProperties;
+import com.kama.jchatmind.agent.memory.ToolAwareMessageWindowChatMemory;
 import com.kama.jchatmind.agent.tools.Tool;
+import com.kama.jchatmind.agent.tools.ToolResultCompactor;
 import com.kama.jchatmind.config.ChatClientRegistry;
 import com.kama.jchatmind.converter.AgentConverter;
 import com.kama.jchatmind.converter.ChatMessageConverter;
@@ -48,6 +51,7 @@ import java.util.stream.Collectors;
 public class JChatMindFactory {
 
     private static final Logger log = LoggerFactory.getLogger(JChatMindFactory.class);
+    private static final String KNOWLEDGE_TOOL_NAME = "KnowledgeTool";
     private final ChatClientRegistry chatClientRegistry;
     private final ChatEventPublisher chatEventPublisher;
     private final AgentMapper agentMapper;
@@ -66,6 +70,8 @@ public class JChatMindFactory {
     private final CodingTaskService codingTaskService;
     private final CodingProperties codingProperties;
     private final CodingSubagentProperties codingSubagentProperties;
+    private final ToolResultCompactor toolResultCompactor;
+    private final AgentToolResultProperties agentToolResultProperties;
 
     // 运行时 Agent 配置
     private AgentDTO agentConfig;
@@ -88,7 +94,9 @@ public class JChatMindFactory {
             CodingPromptComposer codingPromptComposer,
             CodingTaskService codingTaskService,
             CodingProperties codingProperties,
-            CodingSubagentProperties codingSubagentProperties
+            CodingSubagentProperties codingSubagentProperties,
+            ToolResultCompactor toolResultCompactor,
+            AgentToolResultProperties agentToolResultProperties
     ) {
         this.chatClientRegistry = chatClientRegistry;
         this.chatEventPublisher = chatEventPublisher;
@@ -108,6 +116,8 @@ public class JChatMindFactory {
         this.codingTaskService = codingTaskService;
         this.codingProperties = codingProperties;
         this.codingSubagentProperties = codingSubagentProperties;
+        this.toolResultCompactor = toolResultCompactor;
+        this.agentToolResultProperties = agentToolResultProperties;
     }
 
     private String buildSystemPromptWithRules(String basePrompt, String chatSessionId) {
@@ -129,19 +139,28 @@ public class JChatMindFactory {
         List<Message> memory = loadChatMessageHistory(chatSessionId, enrichedUserInput);
 
         // Memory Hub：在 chat_message 主链路之外注入 RECENT/ARCHIVE 历史摘要（保留 tool 链完整性）
-        boolean injectSupplemental = memoryProperties.isEnabled()
-                && memoryProperties.isSupplementalEnabled()
-                && codingTaskService.getActiveTask(chatSessionId) == null;
+        CodingTask activeCodingTask = codingTaskService.getActiveTask(chatSessionId);
+        boolean injectSupplemental = false;
+        String supplementalLabel = "以下是与当前会话相关的历史记忆（来自 Memory Hub）：";
+        if (memoryProperties.isEnabled()) {
+            if (activeCodingTask != null) {
+                injectSupplemental = memoryProperties.isCodingSupplementalEnabled();
+                supplementalLabel = "以下是与当前 Coding 任务相关的历史记忆（RECENT/ARCHIVE，来自 Memory Hub）：";
+            } else {
+                injectSupplemental = memoryProperties.isSupplementalEnabled();
+            }
+        }
         if (injectSupplemental) {
             try {
                 List<Message> supplemental = memoryIntegration.buildSupplementalContext(chatSessionId, 0);
                 if (supplemental != null && !supplemental.isEmpty()) {
                     List<Message> merged = new ArrayList<>();
-                    merged.add(new SystemMessage("以下是与当前会话相关的历史记忆（来自 Memory Hub）："));
+                    merged.add(new SystemMessage(supplementalLabel));
                     merged.addAll(supplemental);
                     merged.addAll(memory);
                     memory = merged;
-                    log.debug("Memory Hub 已为 session={} 注入 {} 条补充记忆", chatSessionId, supplemental.size());
+                    log.debug("Memory Hub 已为 session={} 注入 {} 条补充记忆 (coding={})",
+                            chatSessionId, supplemental.size(), activeCodingTask != null);
                 }
             } catch (Exception e) {
                 log.warn("Memory Hub 补充记忆加载失败 session={}: {}", chatSessionId, e.getMessage());
@@ -194,7 +213,66 @@ public class JChatMindFactory {
                 }
             }
         }
+        compactHistoricalToolResults(memory);
         return memory;
+    }
+
+    /**
+     * 对较早的 tool round 压缩 responseData，最近 N 轮保持完整供多步推理。
+     */
+    private void compactHistoricalToolResults(List<Message> memory) {
+        if (!agentToolResultProperties.isEnabled() || memory.isEmpty()) {
+            return;
+        }
+        Set<Integer> pinned = resolvePinnedMessageIndices(memory);
+        List<List<Integer>> rounds = ToolAwareMessageWindowChatMemory.partitionRoundIndices(memory, pinned);
+        List<List<Integer>> toolRounds = new ArrayList<>();
+        for (List<Integer> round : rounds) {
+            boolean hasTool = round.stream().anyMatch(idx -> memory.get(idx) instanceof ToolResponseMessage);
+            if (hasTool) {
+                toolRounds.add(round);
+            }
+        }
+        int preserve = Math.max(0, agentToolResultProperties.getPreserveRecentRounds());
+        int compactThrough = toolRounds.size() - preserve;
+        if (compactThrough <= 0) {
+            return;
+        }
+        Set<Integer> compactIndices = new HashSet<>();
+        for (int r = 0; r < compactThrough; r++) {
+            compactIndices.addAll(toolRounds.get(r));
+        }
+        for (int i = 0; i < memory.size(); i++) {
+            if (!compactIndices.contains(i)) {
+                continue;
+            }
+            Message message = memory.get(i);
+            if (!(message instanceof ToolResponseMessage toolResponseMessage)) {
+                continue;
+            }
+            List<ToolResponseMessage.ToolResponse> compacted = toolResponseMessage.getResponses().stream()
+                    .map(resp -> new ToolResponseMessage.ToolResponse(
+                            resp.id(),
+                            resp.name(),
+                            toolResultCompactor.compact(resp.name(), resp.responseData())))
+                    .toList();
+            memory.set(i, ToolResponseMessage.builder().responses(compacted).build());
+        }
+    }
+
+    private Set<Integer> resolvePinnedMessageIndices(List<Message> messages) {
+        Set<Integer> pinned = new HashSet<>();
+        boolean firstUserPinned = false;
+        for (int i = 0; i < messages.size(); i++) {
+            Message message = messages.get(i);
+            if (message instanceof SystemMessage) {
+                pinned.add(i);
+            } else if (!firstUserPinned && message instanceof UserMessage) {
+                pinned.add(i);
+                firstUserPinned = true;
+            }
+        }
+        return pinned;
     }
 
     private AgentDTO toAgentConfig(Agent agent) {
@@ -207,12 +285,24 @@ public class JChatMindFactory {
     }
 
     private List<KnowledgeBaseDTO> resolveRuntimeKnowledgeBases(AgentDTO agentConfig) {
-        List<String> allowedKbIds = agentConfig.getAllowedKbs();
-        if (allowedKbIds == null || allowedKbIds.isEmpty()) {
+        return resolveRuntimeKnowledgeBases(agentConfig, null);
+    }
+
+    private List<KnowledgeBaseDTO> resolveRuntimeKnowledgeBases(AgentDTO agentConfig, String sessionId) {
+        if (sessionId != null && codingTaskService.getActiveTask(sessionId) != null) {
+            return Collections.emptyList();
+        }
+        LinkedHashSet<String> allowedKbIds = new LinkedHashSet<>();
+        if (agentConfig.getAllowedKbs() != null) {
+            agentConfig.getAllowedKbs().stream()
+                    .filter(StringUtils::hasText)
+                    .forEach(allowedKbIds::add);
+        }
+        if (allowedKbIds.isEmpty()) {
             return Collections.emptyList();
         }
 
-        List<KnowledgeBase> knowledgeBases = knowledgeBaseMapper.selectByIdBatch(allowedKbIds);
+        List<KnowledgeBase> knowledgeBases = knowledgeBaseMapper.selectByIdBatch(new ArrayList<>(allowedKbIds));
         if (knowledgeBases.isEmpty()) {
             return Collections.emptyList();
         }
@@ -229,8 +319,15 @@ public class JChatMindFactory {
     }
 
     private List<Tool> resolveRuntimeTools(AgentDTO agentConfig) {
+        return resolveRuntimeTools(agentConfig, null);
+    }
+
+    private List<Tool> resolveRuntimeTools(AgentDTO agentConfig, String sessionId) {
         // 固定工具（系统强制）
         List<Tool> runtimeTools = new ArrayList<>(toolFacadeService.getFixedTools());
+        if (sessionId != null && codingTaskService.getActiveTask(sessionId) != null) {
+            runtimeTools.removeIf(t -> KNOWLEDGE_TOOL_NAME.equals(t.getName()));
+        }
 
         // 可选工具（按 Agent 配置）
         List<String> allowedToolNames = agentConfig.getAllowedTools();
@@ -350,7 +447,7 @@ public class JChatMindFactory {
         int memoryWindow = resolveMemoryWindow(taskSessionId, agentConfig, subAgent);
         McpToolBridge bridgeForResolver = CodingAgentRoles.isOrchestrator(agentConfig)
                 || CodingAgentRoles.isReviewer(agentConfig) ? null : mcpToolBridge;
-        return new JChatMind(
+        JChatMind jChatMind = new JChatMind(
                 agent.getId(),
                 agent.getName(),
                 agent.getDescription(),
@@ -367,6 +464,8 @@ public class JChatMindFactory {
                 chatMessageConverter,
                 bridgeForResolver
         );
+        jChatMind.setSchedulerMode(CodingAgentRoles.isOrchestrator(agentConfig));
+        return jChatMind;
     }
 
     /**
@@ -402,8 +501,8 @@ public class JChatMindFactory {
         List<Message> memory = loadMemory(chatSessionId);
         memory.add(new UserMessage(continuationPrompt));
 
-        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
-        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig);
+        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig, chatSessionId);
+        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig, chatSessionId);
         List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
         injectMcpToolCallbacks(toolCallbacks, agentConfig, chatSessionId, agentId);
         return buildAgentRuntimeWithCodingSteps(
@@ -415,10 +514,8 @@ public class JChatMindFactory {
         AgentDTO agentConfig = toAgentConfig(agent);
         List<Message> memory = loadMemory(chatSessionId, enrichedUserInput);
 
-        // 解析 agent 的支持的知识库
-        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
-        // 解析 agent 支持的工具调用
-        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig);
+        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig, chatSessionId);
+        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig, chatSessionId);
         // 将工具调用转换成 ToolCallback 的形式
         List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
 
@@ -442,9 +539,9 @@ public class JChatMindFactory {
         List<Message> memory = new ArrayList<>();
         memory.add(new UserMessage(goal));
 
-        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
+        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig, parentSessionId);
         List<Tool> runtimeTools = CodingAgentRoles.filterToolsByRole(
-                resolveRuntimeTools(agentConfig), CodingAgentRoles.AgentRole.WORKER);
+                resolveRuntimeTools(agentConfig, parentSessionId), CodingAgentRoles.AgentRole.WORKER);
         List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
 
         injectMcpToolCallbacks(toolCallbacks, agentConfig, parentSessionId, workerAgentId);
@@ -469,8 +566,9 @@ public class JChatMindFactory {
         memory.add(new UserMessage("开始执行"));
 
         CodingAgentRoles.AgentRole role = CodingAgentRoles.resolveRole(agentConfig);
-        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
-        List<Tool> runtimeTools = CodingAgentRoles.filterToolsByRole(resolveRuntimeTools(agentConfig), role);
+        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig, spec.getParentSessionId());
+        List<Tool> runtimeTools = CodingAgentRoles.filterToolsByRole(
+                resolveRuntimeTools(agentConfig, spec.getParentSessionId()), role);
         List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
 
         injectMcpToolCallbacks(toolCallbacks, agentConfig, spec.getParentSessionId(), spec.getAgentId());

@@ -1,0 +1,176 @@
+{
+  "sessions": [
+    {
+      "id": "order-timeout",
+      "turns": [
+        {
+          "ref": "t1",
+          "role": "user",
+          "content": "我们要给电商系统加一个订单超时自动取消的功能。",
+          "tags": ["order", "timeout"],
+          "importance": 5
+        },
+        {
+          "ref": "t2",
+          "role": "assistant",
+          "content": "订单超时取消可以用延迟队列实现，例如 RabbitMQ 的 TTL 加死信队列，到期后投递到死信交换机触发取消。",
+          "tags": ["order", "timeout", "mq"],
+          "importance": 6
+        },
+        {
+          "ref": "t3",
+          "role": "user",
+          "content": "确认就用 RabbitMQ 死信队列方案，超时时间统一设为 30 分钟。",
+          "tags": ["order", "timeout", "mq", "decision"],
+          "importance": 9
+        },
+        {
+          "ref": "t4",
+          "role": "assistant",
+          "content": "已记录决策。需要在 OrderService.createOrder 里创建订单后发送一条延迟 30 分钟的消息。",
+          "tags": ["order", "mq", "code"],
+          "importance": 6
+        },
+        {
+          "ref": "t5",
+          "role": "user",
+          "content": "那支付成功之后，怎么避免它又被超时任务取消掉？",
+          "tags": ["payment", "order", "timeout"],
+          "importance": 5
+        },
+        {
+          "ref": "t6",
+          "role": "assistant",
+          "content": "在支付回调里把订单状态改为 PAID；消费死信消息执行取消前先检查状态，已支付则直接跳过取消。",
+          "tags": ["payment", "order", "timeout", "mq", "decision"],
+          "importance": 8
+        },
+        {
+          "ref": "t7",
+          "role": "user",
+          "content": "顺便记一下，我们的数据库用的是 PostgreSQL 15。",
+          "tags": ["database", "postgresql"],
+          "importance": 4
+        },
+        {
+          "ref": "t8",
+          "role": "assistant",
+          "content": "了解。订单表 t_order 需要增加 status 和 expire_at 两个字段来支撑超时逻辑。",
+          "tags": ["order", "database", "code"],
+          "importance": 6
+        },
+        {
+          "ref": "t9",
+          "role": "user",
+          "content": "今天天气不错，中午想吃点川菜。",
+          "tags": ["chitchat"],
+          "importance": 2
+        },
+        {
+          "ref": "t10",
+          "role": "assistant",
+          "content": "川菜不错，附近的水煮鱼和回锅肉评价都挺高，注意别太辣影响下午写代码。",
+          "tags": ["chitchat"],
+          "importance": 2
+        }
+      ],
+      "queries": [
+        {
+          "query": "订单超时取消最终用的是什么技术方案？",
+          "goldRecallRefs": ["t2", "t3", "t6"],
+          "expectedPoints": ["RabbitMQ 死信队列", "超时 30 分钟"]
+        },
+        {
+          "query": "支付成功后如何避免订单被超时任务误取消？",
+          "goldRecallRefs": ["t5", "t6"],
+          "expectedPoints": ["支付回调把状态改为 PAID", "消费死信前检查状态，已支付则跳过"]
+        }
+      ],
+      "goldRelatedPairs": [
+        ["t1", "t2"],
+        ["t1", "t3"],
+        ["t2", "t3"],
+        ["t2", "t4"],
+        ["t3", "t4"],
+        ["t3", "t6"],
+        ["t1", "t5"],
+        ["t5", "t6"],
+        ["t1", "t8"]
+      ]
+    },
+    {
+      "id": "user-auth",
+      "turns": [
+        {
+          "ref": "a1",
+          "role": "user",
+          "content": "用户认证模块准备用 JWT 还是 Session？",
+          "tags": ["auth", "jwt", "session"],
+          "importance": 5
+        },
+        {
+          "ref": "a2",
+          "role": "assistant",
+          "content": "考虑到要做多端和水平扩展，建议用无状态的 JWT，access token 配合 refresh token。",
+          "tags": ["auth", "jwt"],
+          "importance": 6
+        },
+        {
+          "ref": "a3",
+          "role": "user",
+          "content": "确定采用 JWT 方案，access token 有效期 15 分钟，refresh token 7 天。",
+          "tags": ["auth", "jwt", "decision"],
+          "importance": 9
+        },
+        {
+          "ref": "a4",
+          "role": "assistant",
+          "content": "好的，refresh token 持久化到 Redis，登出时把对应 token 加入黑名单实现失效。",
+          "tags": ["auth", "jwt", "redis"],
+          "importance": 7
+        },
+        {
+          "ref": "a5",
+          "role": "user",
+          "content": "密码怎么存？",
+          "tags": ["auth", "password"],
+          "importance": 5
+        },
+        {
+          "ref": "a6",
+          "role": "assistant",
+          "content": "密码用 BCrypt 加盐哈希存储，绝不明文，登录时用 matches 校验。",
+          "tags": ["auth", "password", "security"],
+          "importance": 7
+        },
+        {
+          "ref": "a7",
+          "role": "user",
+          "content": "周末有什么好看的电影推荐吗？",
+          "tags": ["chitchat"],
+          "importance": 2
+        }
+      ],
+      "queries": [
+        {
+          "query": "认证模块最终选了哪种方案，token 有效期是多少？",
+          "goldRecallRefs": ["a2", "a3", "a4"],
+          "expectedPoints": ["采用 JWT", "access 15 分钟", "refresh 7 天"]
+        },
+        {
+          "query": "用户密码是怎么存储的？",
+          "goldRecallRefs": ["a6"],
+          "expectedPoints": ["BCrypt 加盐哈希", "不明文存储"]
+        }
+      ],
+      "goldRelatedPairs": [
+        ["a1", "a2"],
+        ["a1", "a3"],
+        ["a2", "a3"],
+        ["a3", "a4"],
+        ["a2", "a4"],
+        ["a5", "a6"]
+      ]
+    }
+  ]
+}

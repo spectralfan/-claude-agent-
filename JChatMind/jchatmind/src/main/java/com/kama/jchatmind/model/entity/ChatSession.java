@@ -1,73 +1,55 @@
 package com.kama.jchatmind.model.entity;
 
 import java.time.LocalDateTime;
-
 import lombok.Builder;
 import lombok.Data;
 
-/**
- * @TableName chat_session
- */
 @Data
 @Builder
 public class ChatSession {
     private String id;
-
     private String agentId;
-
     private String title;
-
-    // JSON string
+    /** CHAT / CODING */
+    private String type;
     private String metadata;
-
     private LocalDateTime createdAt;
-
     private LocalDateTime updatedAt;
 
     @Override
     public boolean equals(Object that) {
-        if (this == that) {
-            return true;
-        }
-        if (that == null) {
-            return false;
-        }
-        if (getClass() != that.getClass()) {
-            return false;
-        }
+        if (this == that) return true;
+        if (that == null) return false;
+        if (getClass() != that.getClass()) return false;
         ChatSession other = (ChatSession) that;
-        return (this.getId() == null ? other.getId() == null : this.getId().equals(other.getId()))
-            && (this.getAgentId() == null ? other.getAgentId() == null : this.getAgentId().equals(other.getAgentId()))
-            && (this.getTitle() == null ? other.getTitle() == null : this.getTitle().equals(other.getTitle()))
-            && (this.getMetadata() == null ? other.getMetadata() == null : this.getMetadata().equals(other.getMetadata()))
-            && (this.getCreatedAt() == null ? other.getCreatedAt() == null : this.getCreatedAt().equals(other.getCreatedAt()))
-            && (this.getUpdatedAt() == null ? other.getUpdatedAt() == null : this.getUpdatedAt().equals(other.getUpdatedAt()));
+        return eq(this.getId(), other.getId())
+            && eq(this.getAgentId(), other.getAgentId())
+            && eq(this.getTitle(), other.getTitle())
+            && eq(this.getType(), other.getType())
+            && eq(this.getMetadata(), other.getMetadata())
+            && eq(this.getCreatedAt(), other.getCreatedAt())
+            && eq(this.getUpdatedAt(), other.getUpdatedAt());
     }
 
     @Override
     public int hashCode() {
-        final int prime = 31;
         int result = 1;
-        result = prime * result + ((getId() == null) ? 0 : getId().hashCode());
-        result = prime * result + ((getAgentId() == null) ? 0 : getAgentId().hashCode());
-        result = prime * result + ((getTitle() == null) ? 0 : getTitle().hashCode());
-        result = prime * result + ((getMetadata() == null) ? 0 : getMetadata().hashCode());
-        result = prime * result + ((getCreatedAt() == null) ? 0 : getCreatedAt().hashCode());
-        result = prime * result + ((getUpdatedAt() == null) ? 0 : getUpdatedAt().hashCode());
+        result = 31 * result + hash(getId());
+        result = 31 * result + hash(getAgentId());
+        result = 31 * result + hash(getTitle());
+        result = 31 * result + hash(getType());
+        result = 31 * result + hash(getMetadata());
+        result = 31 * result + hash(getCreatedAt());
+        result = 31 * result + hash(getUpdatedAt());
         return result;
     }
 
+    private static boolean eq(Object a, Object b) { return a == null ? b == null : a.equals(b); }
+    private static int hash(Object o) { return o != null ? o.hashCode() : 0; }
+
     @Override
     public String toString() {
-        return getClass().getSimpleName() +
-                " [" +
-                "Hash = " + hashCode() +
-                ", id=" + id +
-                ", agentId=" + agentId +
-                ", title=" + title +
-                ", metadata=" + metadata +
-                ", createdAt=" + createdAt +
-                ", updatedAt=" + updatedAt +
-                "]";
+        return "ChatSession{id=" + id + ", agentId=" + agentId + ", title=" + title
+                + ", type=" + type + ", createdAt=" + createdAt + "}";
     }
 }

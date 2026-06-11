@@ -6,7 +6,7 @@
   "scaffoldTemplate": "node-npm",
   "skillId": "node-autonomous-dev",
   "suggestedMcpTools": ["run_terminal_cmd"],
-  "verifyWorkflow": "改代码后优先 run_allowed_verify(\"npm test\")；JS 语法用 check_js_syntax(path)；失败则读输出修复再测",
+  "verifyWorkflow": "list_stack_verify_commands → run_stack_verify(\"npm test\")；独立 .js 用 check_js_syntax；HTML 用 verify_coding_file",
   "doneCriteria": "npm test exit 0",
   "suggestedAgentTools": ["coding_file_tools", "coding_verify_tools", "run_terminal_cmd"],
   "verifyCommands": [
