@@ -82,7 +82,7 @@ public class CodingSubtaskController {
         body.put("mcpEnabled", mcpProperties.isEnabled());
         body.put("toolCount", callbacks.size());
         body.put("shellReady", shellReady);
-        body.put("policyVersion", McpShellCommandPolicy.POLICY_VERSION);
+        body.put("policyVersion", "1.0");
         boolean selfTestOk = Boolean.TRUE.equals(body.get("selfTestPassed"));
         String hint;
         if (!shellReady) {

@@ -85,7 +85,7 @@ public class McpProxyLauncher implements SmartLifecycle {
             return fromUserDir;
         }
         return Paths.get(System.getProperty("user.dir"))
-                .resolve("JChatMind/jchatmind/scripts/mcp")
+                .resolve("scripts/mcp")
                 .normalize();
     }
 }

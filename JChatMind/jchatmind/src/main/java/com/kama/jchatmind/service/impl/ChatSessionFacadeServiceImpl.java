@@ -64,7 +64,7 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
         if (entity == null) throw new BizException("聊天会话不存在: " + chatSessionId);
         try {
             return GetChatSessionResponse.builder().chatSession(chatSessionConverter.toVO(entity)).build();
-        } catch (JsonProcessingException e) { throw new RuntimeException(e); }
+        } catch (Exception e) { throw new RuntimeException(e); }
     }
 
     @Override
@@ -83,21 +83,13 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
     public CreateChatSessionResponse createChatSession(CreateChatSessionRequest request) {
         try {
             String type = resolveSessionType(request);
-            request.setType(type);
-            ChatSessionDTO dto = chatSessionConverter.toDTO(request);
-            ChatSession entity = chatSessionConverter.toEntity(dto);
-            LocalDateTime now = LocalDateTime.now();
-            entity.setCreatedAt(now);
-            entity.setUpdatedAt(now);
-            int result = chatSessionMapper.insert(entity);
-            if (result <= 0) throw new BizException("创建聊天会话失败");
-
-            // 写 meta.json（通过 SessionManager）
-            sessionManager.createSession(entity.getAgentId(), entity.getTitle());
-
-            return CreateChatSessionResponse.builder().chatSessionId(entity.getId()).build();
-        } catch (JsonProcessingException e) {
-            throw new BizException("创建聊天会话时发生序列化错误: " + e.getMessage());
+            String sid = sessionManager.createSession(
+                    request.getAgentId(),
+                    request.getTitle() != null ? request.getTitle() : "新会话",
+                    type
+            );
+            return CreateChatSessionResponse.builder().chatSessionId(sid).build();} catch (Exception e) {
+            throw new BizException("创建聊天会话失败: " + e.getMessage());
         }
     }
 
@@ -123,7 +115,7 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
             updated.setUpdatedAt(LocalDateTime.now());
             int r = chatSessionMapper.updateById(updated);
             if (r <= 0) throw new BizException("更新聊天会话失败");
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             throw new BizException("更新聊天会话时发生序列化错误: " + e.getMessage());
         }
     }
@@ -159,6 +151,6 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
             var node = objectMapper.readTree(session.getMetadata());
             return node.path("hidden").asBoolean(false)
                     || "coding_subtask".equals(node.path("kind").asText(null));
-        } catch (JsonProcessingException e) { return false; }
+        } catch (Exception e) { return false; }
     }
 }

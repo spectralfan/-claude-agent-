@@ -1,0 +1,45 @@
+{
+  "global": {
+    "security": {
+      "maxCommandLength": 4000,
+      "commandTimeout": 120,
+      "enableInjectionProtection": true,
+      "restrictWorkingDirectory": true
+    },
+    "restrictions": {
+      "blockedCommands": [
+        "format", "shutdown", "restart", "reg", "regedit", "takeown"
+      ],
+      "blockedArguments": ["-enc", "-encodedcommand", "--login", "--system"],
+      "blockedOperators": ["&", "|", ";", "`"]
+    },
+    "paths": {
+      "allowedPaths": [
+        "Z:\\JAVA_workshop\\JChatMindv2\\JChatMind\\jchatmind\\workspace",
+        "Z:\\JAVA_workshop\\JChatMindv2\\JChatMind\\jchatmind"
+      ],
+      "initialDir": "Z:\\JAVA_workshop\\JChatMindv2\\JChatMind\\jchatmind\\workspace",
+      "restrictWorkingDirectory": true
+    }
+  },
+  "shells": {
+    "cmd": {
+      "enabled": true,
+      "executable": {
+        "command": "cmd.exe",
+        "args": ["/c"]
+      },
+      "overrides": {
+        "security": {
+          "commandTimeout": 300
+        }
+      }
+    },
+    "powershell": {
+      "enabled": false
+    },
+    "gitbash": {
+      "enabled": false
+    }
+  }
+}

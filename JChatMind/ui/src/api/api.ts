@@ -1,7 +1,7 @@
 import { get, post, patch, del, BASE_URL } from "./http.ts";
 import type { ChatMessageVO, MessageType } from "../types";
 
-// 类型定义
+// 绫诲瀷瀹氫箟
 export interface ChatOptions {
   temperature?: number;
   topP?: number;
@@ -52,14 +52,14 @@ export interface GetAgentsResponse {
 }
 
 /**
- * 获取所有 agents
+ * 鑾峰彇鎵€鏈?agents
  */
 export async function getAgents(): Promise<GetAgentsResponse> {
   return get<GetAgentsResponse>("/agents");
 }
 
 /**
- * 创建 agent
+ * 鍒涘缓 agent
  */
 export async function createAgent(
   request: CreateAgentRequest,
@@ -68,14 +68,14 @@ export async function createAgent(
 }
 
 /**
- * 删除 agent
+ * 鍒犻櫎 agent
  */
 export async function deleteAgent(agentId: string): Promise<void> {
   return del<void>(`/agents/${agentId}`);
 }
 
 /**
- * 更新 agent
+ * 鏇存柊 agent
  */
 export async function updateAgent(
   agentId: string,
@@ -85,7 +85,7 @@ export async function updateAgent(
 }
 
 /**
- * 创建聊天会话
+ * 鍒涘缓鑱婂ぉ浼氳瘽
  */
 export interface CreateChatSessionRequest {
   agentId: string;
@@ -107,12 +107,12 @@ export async function createChatSession(
 }
 
 /**
- * 聊天会话相关类型和接口
- */
+ * 鑱婂ぉ浼氳瘽鐩稿叧绫诲瀷鍜屾帴鍙? */
 export interface ChatSessionVO {
   id: string;
   agentId: string;
   title?: string;
+  type?: string;
 }
 
 export interface GetChatSessionsResponse {
@@ -128,14 +128,13 @@ export interface UpdateChatSessionRequest {
 }
 
 /**
- * 获取所有聊天会话
- */
-export async function getChatSessions(): Promise<GetChatSessionsResponse> {
-  return get<GetChatSessionsResponse>("/chat-sessions");
+ * 鑾峰彇鎵€鏈夎亰澶╀細璇? */
+export async function getChatSessions(type?: string): Promise<GetChatSessionsResponse> {
+  return get<GetChatSessionsResponse>("/chat-sessions", type ? { type } : undefined);
 }
 
 /**
- * 获取单个聊天会话
+ * 鑾峰彇鍗曚釜鑱婂ぉ浼氳瘽
  */
 export async function getChatSession(
   chatSessionId: string,
@@ -144,7 +143,7 @@ export async function getChatSession(
 }
 
 /**
- * 根据 agentId 获取聊天会话
+ * 鏍规嵁 agentId 鑾峰彇鑱婂ぉ浼氳瘽
  */
 export async function getChatSessionsByAgentId(
   agentId: string,
@@ -153,7 +152,7 @@ export async function getChatSessionsByAgentId(
 }
 
 /**
- * 更新聊天会话
+ * 鏇存柊鑱婂ぉ浼氳瘽
  */
 export async function updateChatSession(
   chatSessionId: string,
@@ -163,15 +162,14 @@ export async function updateChatSession(
 }
 
 /**
- * 删除聊天会话
+ * 鍒犻櫎鑱婂ぉ浼氳瘽
  */
 export async function deleteChatSession(chatSessionId: string): Promise<void> {
   return del<void>(`/chat-sessions/${chatSessionId}`);
 }
 
 /**
- * 聊天消息相关类型和接口
- */
+ * 鑱婂ぉ娑堟伅鐩稿叧绫诲瀷鍜屾帴鍙? */
 export interface MetaData {
   [key: string]: unknown;
 }
@@ -198,7 +196,7 @@ export interface UpdateChatMessageRequest {
 }
 
 /**
- * 根据 sessionId 获取聊天消息
+ * 鏍规嵁 sessionId 鑾峰彇鑱婂ぉ娑堟伅
  */
 export async function getChatMessagesBySessionId(
   sessionId: string,
@@ -207,7 +205,7 @@ export async function getChatMessagesBySessionId(
 }
 
 /**
- * 创建聊天消息
+ * 鍒涘缓鑱婂ぉ娑堟伅
  */
 export async function createChatMessage(
   request: CreateChatMessageRequest,
@@ -216,7 +214,7 @@ export async function createChatMessage(
 }
 
 /**
- * 更新聊天消息
+ * 鏇存柊鑱婂ぉ娑堟伅
  */
 export async function updateChatMessage(
   chatMessageId: string,
@@ -226,14 +224,14 @@ export async function updateChatMessage(
 }
 
 /**
- * 删除聊天消息
+ * 鍒犻櫎鑱婂ぉ娑堟伅
  */
 export async function deleteChatMessage(chatMessageId: string): Promise<void> {
   return del<void>(`/chat-messages/${chatMessageId}`);
 }
 
 /**
- * 知识库相关类型和接口
+ * 鐭ヨ瘑搴撶浉鍏崇被鍨嬪拰鎺ュ彛
  */
 export interface KnowledgeBaseVO {
   id: string;
@@ -260,15 +258,14 @@ export interface CreateKnowledgeBaseResponse {
 }
 
 /**
- * 获取所有知识库
+ * 鑾峰彇鎵€鏈夌煡璇嗗簱
  */
 export async function getKnowledgeBases(): Promise<GetKnowledgeBasesResponse> {
   return get<GetKnowledgeBasesResponse>("/knowledge-bases");
 }
 
 /**
- * 创建知识库
- */
+ * 鍒涘缓鐭ヨ瘑搴? */
 export async function createKnowledgeBase(
   request: CreateKnowledgeBaseRequest,
 ): Promise<CreateKnowledgeBaseResponse> {
@@ -276,8 +273,7 @@ export async function createKnowledgeBase(
 }
 
 /**
- * 删除知识库
- */
+ * 鍒犻櫎鐭ヨ瘑搴? */
 export async function deleteKnowledgeBase(
   knowledgeBaseId: string,
 ): Promise<void> {
@@ -285,8 +281,7 @@ export async function deleteKnowledgeBase(
 }
 
 /**
- * 更新知识库
- */
+ * 鏇存柊鐭ヨ瘑搴? */
 export async function updateKnowledgeBase(
   knowledgeBaseId: string,
   request: UpdateKnowledgeBaseRequest,
@@ -295,8 +290,7 @@ export async function updateKnowledgeBase(
 }
 
 /**
- * 文档相关类型和接口
- */
+ * 鏂囨。鐩稿叧绫诲瀷鍜屾帴鍙? */
 export interface DocumentVO {
   id: string;
   kbId: string;
@@ -314,7 +308,7 @@ export interface CreateDocumentResponse {
 }
 
 /**
- * 根据知识库 ID 获取文档列表
+ * 鏍规嵁鐭ヨ瘑搴?ID 鑾峰彇鏂囨。鍒楄〃
  */
 export async function getDocumentsByKbId(
   kbId: string,
@@ -323,7 +317,7 @@ export async function getDocumentsByKbId(
 }
 
 /**
- * 上传文档
+ * 涓婁紶鏂囨。
  */
 export async function uploadDocument(
   kbId: string,
@@ -344,22 +338,21 @@ export async function uploadDocument(
 
   const apiResponse = await response.json();
   if (apiResponse.code !== 200) {
-    throw new Error(apiResponse.message || "上传失败");
+    throw new Error(apiResponse.message || "涓婁紶澶辫触");
   }
 
   return apiResponse.data;
 }
 
 /**
- * 删除文档
+ * 鍒犻櫎鏂囨。
  */
 export async function deleteDocument(documentId: string): Promise<void> {
   return del<void>(`/documents/${documentId}`);
 }
 
 /**
- * 工具相关类型和接口
- */
+ * 宸ュ叿鐩稿叧绫诲瀷鍜屾帴鍙? */
 export type ToolType = "FIXED" | "OPTIONAL";
 
 export interface ToolVO {
@@ -373,16 +366,14 @@ export interface GetOptionalToolsResponse {
 }
 
 /**
- * 获取可选工具列表
- */
+ * 鑾峰彇鍙€夊伐鍏峰垪琛? */
 export async function getOptionalTools(): Promise<GetOptionalToolsResponse> {
   const tools = await get<ToolVO[]>("/tools");
   return { tools };
 }
 
 /**
- * AI Coding 模块相关类型和接口
- */
+ * AI Coding 妯″潡鐩稿叧绫诲瀷鍜屾帴鍙? */
 export type MavenGoalType =
   | "compile"
   | "test"
@@ -401,8 +392,7 @@ export type CodingTaskStatusType =
   | "REJECTED";
 
 /**
- * 获取可选的本地工作区（IDEA/Maven 工程）列表
- */
+ * 鑾峰彇鍙€夌殑鏈湴宸ヤ綔鍖猴紙IDEA/Maven 宸ョ▼锛夊垪琛? */
 export async function getCodingWorkspaces(): Promise<CodingWorkspaceOption[]> {
   return get<CodingWorkspaceOption[]>("/coding/workspaces");
 }
@@ -502,9 +492,9 @@ export interface CodingWorkspaceOption {
 export interface CreateCodingTaskRequest {
   sessionId: string;
   agentId: string;
-  /** 网页选择的本地工程根（须在服务端白名单内） */
+  /** 缃戦〉閫夋嫨鐨勬湰鍦板伐绋嬫牴锛堥』鍦ㄦ湇鍔＄鐧藉悕鍗曞唴锛?*/
   workspaceRoot: string;
-  /** 相对工程根的子路径，多模块时可填子模块名 */
+  /** 鐩稿宸ョ▼鏍圭殑瀛愯矾寰勶紝澶氭ā鍧楁椂鍙～瀛愭ā鍧楀悕 */
   workspacePath: string;
   stackId?: string;
   skillId?: string;
@@ -531,7 +521,7 @@ export interface RunMavenRequest {
 }
 
 /**
- * 查询会话下当前活动的 Coding 任务
+ * 鏌ヨ浼氳瘽涓嬪綋鍓嶆椿鍔ㄧ殑 Coding 浠诲姟
  */
 export async function getActiveCodingTask(
   sessionId: string,
@@ -543,7 +533,7 @@ export async function getActiveCodingTask(
 }
 
 /**
- * 创建 Coding 任务
+ * 鍒涘缓 Coding 浠诲姟
  */
 export async function createCodingTask(
   request: CreateCodingTaskRequest,
@@ -552,7 +542,7 @@ export async function createCodingTask(
 }
 
 /**
- * 查询 Coding 任务
+ * 鏌ヨ Coding 浠诲姟
  */
 export async function getCodingTask(
   taskId: string,
@@ -580,8 +570,7 @@ export async function getCodingTaskSummary(
 }
 
 /**
- * 执行 Maven 命令（受控白名单 + 审批）
- */
+ * 鎵ц Maven 鍛戒护锛堝彈鎺х櫧鍚嶅崟 + 瀹℃壒锛? */
 export async function runMavenCommand(
   taskId: string,
   request: RunMavenRequest,
@@ -643,7 +632,7 @@ export async function getCodingRuntimeStatus(): Promise<CodingRuntimeStatusVO> {
 }
 
 /**
- * 批准待审批命令并执行
+ * 鎵瑰噯寰呭鎵瑰懡浠ゅ苟鎵ц
  */
 export async function approveCodingTask(
   taskId: string,
@@ -652,8 +641,7 @@ export async function approveCodingTask(
 }
 
 /**
- * 拒绝待审批命令
- */
+ * 鎷掔粷寰呭鎵瑰懡浠? */
 export async function rejectCodingTask(
   taskId: string,
   reason: string,

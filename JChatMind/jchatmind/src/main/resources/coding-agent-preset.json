@@ -16,7 +16,8 @@
     "shell",
     "shell_exec",
     "shell_execute",
-    "execute_command"
+    "execute_command",
+    "git_tool"
   ],
   "allowedKbs": []
 }

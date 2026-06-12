@@ -21,6 +21,8 @@ const AgentChatView: React.FC = () => {
   const { state } = useLocation();
   const [loading, setLoading] = useState(false);
   const { agents } = useAgents();
+  const SYSTEM_AGENT_NAMES = ['Claude Code Scheduler', 'Claude Code Coding Agent', 'Claude Code Reviewer', 'Claude Code Orchestrator'];
+  const userAgents = agents.filter((a) => !SYSTEM_AGENT_NAMES.includes(a.name));
   const { refreshChatSessions } = useChatSessions();
 
   const [messages, setMessages] = useState<ChatMessageVO[]>([]);
@@ -154,7 +156,7 @@ const AgentChatView: React.FC = () => {
   if (!chatSessionId) {
     return (
       <EmptyAgentChatView
-        agents={agents}
+        agents={userAgents}
         loading={loading}
         handleSendMessage={handleSendMessage}
       />

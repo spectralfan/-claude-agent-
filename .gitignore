@@ -47,3 +47,5 @@ workspace/style.css
 
 # Temp files
 **/cp.txt
+# Graphify backup snapshots
+graphify-out/2026-*/

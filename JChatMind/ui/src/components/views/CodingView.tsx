@@ -245,10 +245,11 @@ const CodingView: React.FC = () => {
   }, [workspaceRoot, workspacePath]);
 
   const loadMessages = useCallback(async () => {
-    if (!sessionId) return;
-    const resp = await getChatMessagesBySessionId(sessionId);
+    const sid = routeSessionId || sessionId;
+    if (!sid) return;
+    const resp = await getChatMessagesBySessionId(sid);
     setMessages(resp.chatMessages);
-  }, [sessionId]);
+  }, [routeSessionId, sessionId]);
 
   useEffect(() => {
     if (!task?.id) return;

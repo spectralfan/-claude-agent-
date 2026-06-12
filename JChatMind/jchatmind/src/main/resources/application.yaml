@@ -49,12 +49,8 @@ spring:
         # 工具回调集成由本项目 mcp 模块手动接管，关闭自动注入到所有 ChatClient
         toolcallback:
           enabled: false
-        sse:
-          connections:
-            proxy:
-              url: http://localhost:3000
-              # 若 proxy 的 SSE 端点不是默认 /sse，按需指定，例如：
-              # sse-endpoint: /sse
+        stdio:
+          servers-configuration: classpath:mcp/mcp-servers-windows.json
         # ── 可选：不用 SSE proxy，改为 STDIO 直连 shell（二选一，勿与 sse 同时启用同一 server）
         # stdio:
         #   servers-configuration: classpath:mcp/mcp-servers-windows.json
@@ -97,7 +93,7 @@ mcp:
     policy-enabled: true
   # 后端启动时自动拉起 mcp-proxy（端口已占用则跳过；勿与手动 start-mcp-proxy.ps1 重复开）
   proxy:
-    auto-start: true
+    auto-start: false
     port: 3000
     # 建议用绝对路径，避免 IDE/mvn 的 user.dir 不一致导致找不到脚本
     scripts-dir: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/scripts/mcp

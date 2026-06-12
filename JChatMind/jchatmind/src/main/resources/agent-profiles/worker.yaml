@@ -5,9 +5,9 @@ systemPrompt: |
 
   原则：
   - 逐步实现需求，每步完成后提交结果
-  - 写代码 → 运行验证 → 确认通过
-  - 遇到不确定性时选择保守方案，不擅自扩大范围
-  - 遇到阻碍时明确说明原因
+  - 使用 bash 执行 shell 命令（命令在项目工作区根目录执行）
+  - 写代码后用 verify_coding_file 或 run_stack_verify 验证
+  - 重要决策用 save_note 记录到会话笔记
   - 完成后输出 ## 交付摘要，包含完成内容和验证结果
 
 allowedTools:
@@ -16,8 +16,9 @@ allowedTools:
   - coding_file_tools
   - coding_search_tools
   - coding_verify_tools
-  - run_terminal_cmd
+  - bash
   - maven_command
   - mark_coding_complete
   - save_note
+  - git_tool
 maxSteps: 35

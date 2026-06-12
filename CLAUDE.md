@@ -307,6 +307,8 @@
 | 2026-06-12 | Session 管理层：ThreadStore / NoteStore / SessionManager / 消息 API 切换 | Reasonix |
 | 2026-06-12 | Agent 编排优化：Profile 配置化 / SubAgentExecutor 轻量引擎 / EventBus + AgentLoop / Continuation 改进 | Reasonix |
 | 2026-06-12 | 前端/后端重构：Session 类型化（CHAT/CODING）+ 路由分离 + 对话与编码双入口 | Reasonix |
+| 2026-06-12 | MCP 工具优化：Shell 统一(规范化bash) + Git工具(git_status/diff/log/commit) + read_url + ToolResult/BaseTool 标准化 | Reasonix |
+| 2026-06-12 | DB 优化：加索引、删14张电商表、统一UUID类型、删除时清理文件 + Session分类 + MCP STDIO直连 + 路由参数修复 | Reasonix |
 
 
 

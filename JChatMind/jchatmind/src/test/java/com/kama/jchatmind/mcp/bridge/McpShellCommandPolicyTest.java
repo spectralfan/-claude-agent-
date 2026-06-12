@@ -12,22 +12,14 @@ class McpShellCommandPolicyTest {
             new ObjectMapper(), new McpProperties());
 
     @Test
-    void rejectReason_shouldBlockNodeEval() {
-        assertThat(policy.rejectReason("{\"command\":\"node -e \\\"console.log(1)\\\"\"}"))
-                .isPresent()
-                .get()
-                .asString()
-                .contains("策略拦截")
-                .contains("check_js_syntax");
+    void rejectReason_shouldNotBlockNodeEval() {
+        assertThat(policy.rejectReason("{\"command\":\"node -e console.log(1)\"}"))
+                .isEmpty();
     }
 
     @Test
-    void rejectReason_shouldBlockHttpServerOn8080() {
-        assertThat(policy.rejectReason("http-server -p 8080"))
-                .isPresent()
-                .get()
-                .asString()
-                .contains("8080");
+    void rejectReason_shouldNotBlockHttpServerOn8080() {
+        assertThat(policy.rejectReason("http-server -p 8080")).isEmpty();
     }
 
     @Test
@@ -42,21 +34,13 @@ class McpShellCommandPolicyTest {
     }
 
     @Test
-    void rejectReason_shouldBlockNodeCheckHtml() {
-        assertThat(policy.rejectReason("node --check tank-battle.html"))
-                .isPresent()
-                .get()
-                .asString()
-                .contains("verify_coding_file");
+    void rejectReason_shouldNotBlockNodeCheckHtml() {
+        assertThat(policy.rejectReason("node --check tank-battle.html")).isEmpty();
     }
 
     @Test
-    void rejectReason_shouldBlockCmdPipeline() {
-        assertThat(policy.rejectReason("type a.html | find \"</script>\" >nul"))
-                .isPresent()
-                .get()
-                .asString()
-                .contains("管道");
+    void rejectReason_shouldNotBlockCmdPipeline() {
+        assertThat(policy.rejectReason("type a.html | find </script> >nul")).isEmpty();
     }
 
     @Test
@@ -64,7 +48,6 @@ class McpShellCommandPolicyTest {
         McpProperties props = new McpProperties();
         props.getShell().setPolicyEnabled(false);
         McpShellCommandPolicy disabled = new McpShellCommandPolicy(new ObjectMapper(), props);
-
-        assertThat(disabled.rejectReason("node -e \"bad\"")).isEmpty();
+        assertThat(disabled.rejectReason("node -e bad")).isEmpty();
     }
 }

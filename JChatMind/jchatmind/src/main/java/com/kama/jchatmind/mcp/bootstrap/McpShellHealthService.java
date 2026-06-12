@@ -87,7 +87,7 @@ public class McpShellHealthService {
         body.put("shellExecutor", McpShellPlatform.resolvedExecutor(shell));
         body.put("hostOs", McpShellPlatform.isHostWindows() ? "windows" : "posix");
         body.put("policyEnabled", shell.isPolicyEnabled());
-        body.put("policyVersion", McpShellCommandPolicy.POLICY_VERSION);
+        body.put("policyVersion", "1.0");
         body.put("runnerVersion", runnerVersion != null ? runnerVersion : "unknown");
         body.put("selfTestPassed", selfTestPassed);
         body.put("selfTestDetail", selfTestDetail != null ? selfTestDetail : "尚未执行自检");
@@ -161,7 +161,7 @@ public class McpShellHealthService {
             return fromUserDir;
         }
         Path moduleFallback = Path.of(System.getProperty("user.dir"))
-                .resolve("JChatMind/jchatmind/scripts/mcp")
+                .resolve("scripts/mcp")
                 .normalize();
         if (Files.isDirectory(moduleFallback)) {
             return moduleFallback;

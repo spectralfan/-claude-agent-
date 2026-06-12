@@ -28,138 +28,97 @@ public class SessionManagerImpl implements SessionManager {
     private final ApplicationEventPublisher eventPublisher;
     private final Path sessionRoot;
 
-    public SessionManagerImpl(
-            SessionProperties sessionProperties,
-            ChatSessionMapper chatSessionMapper,
-            ApplicationEventPublisher eventPublisher) {
-        this.sessionRoot = Path.of(sessionProperties.getStoreRoot()).toAbsolutePath().normalize();
+    public SessionManagerImpl(SessionProperties sp, ChatSessionMapper mapper, ApplicationEventPublisher ep) {
+        this.sessionRoot = Path.of(sp.getStoreRoot()).toAbsolutePath().normalize();
         this.threadStore = new ThreadStore(this.sessionRoot);
         this.noteStore = new NoteStore(this.sessionRoot);
         this.metaStore = new MetaStore(this.sessionRoot);
-        this.chatSessionMapper = chatSessionMapper;
-        this.eventPublisher = eventPublisher;
+        this.chatSessionMapper = mapper;
+        this.eventPublisher = ep;
     }
 
     @Override
     public String createSession(String agentId, String title) {
-        String sessionId = UUID.randomUUID().toString();
+        return createSession(agentId, title, "CHAT");
+    }
 
+    @Override
+    public String createSession(String agentId, String title, String type) {
+        String sessionId = UUID.randomUUID().toString();
+        String t = (type != null && !type.isBlank()) ? type : "CHAT";
+        String title2 = (title != null && !title.isBlank()) ? title : "新会话";
         ChatSession entity = ChatSession.builder()
                 .id(sessionId)
                 .agentId(agentId)
-                .title(title != null ? title : "新会话")
+                .title(title2)
+                .type(t)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
         chatSessionMapper.insert(entity);
-
-        SessionMeta meta = new SessionMeta(sessionId, agentId, title);
+        SessionMeta meta = new SessionMeta(sessionId, agentId, title2);
         meta.setState(SessionState.CREATED);
         metaStore.writeMeta(sessionId, meta);
-
         eventPublisher.publishEvent(new SessionEvent.Created(this, sessionId));
-        log.info("Session created: id={} agentId={}", sessionId, agentId);
+        log.info("Session created: id={} agentId={} type={}", sessionId, agentId, t);
         return sessionId;
     }
 
-    @Override
-    public void activateSession(String sessionId) {
-        transitionState(sessionId, SessionState.ACTIVE);
-    }
+    public void activateSession(String sid) { transitionState(sid, SessionState.ACTIVE); }
+    public void pauseSession(String sid) { transitionState(sid, SessionState.PAUSED); }
+    public void completeSession(String sid) { transitionState(sid, SessionState.COMPLETED); }
 
-    @Override
-    public void pauseSession(String sessionId) {
-        transitionState(sessionId, SessionState.PAUSED);
-    }
-
-    @Override
-    public void completeSession(String sessionId) {
-        transitionState(sessionId, SessionState.COMPLETED);
-    }
-
-    @Override
     public void failSession(String sessionId, String reason) {
         SessionMeta meta = metaStore.readMeta(sessionId);
-        if (meta == null) {
-            log.warn("Session not found: {}", sessionId);
-            return;
-        }
-        SessionState oldState = meta.getState();
+        if (meta == null) { log.warn("Session not found: {}", sessionId); return; }
+        SessionState old = meta.getState();
         meta.setState(SessionState.FAILED);
         meta.setUpdatedAt(LocalDateTime.now());
         metaStore.writeMeta(sessionId, meta);
-        eventPublisher.publishEvent(new SessionEvent.StateChanged(this, sessionId, oldState, SessionState.FAILED));
-        log.info("Session failed: id={} reason={}", sessionId, reason);
+        eventPublisher.publishEvent(new SessionEvent.StateChanged(this, sessionId, old, SessionState.FAILED));
     }
 
-    @Override
     public String startRun(String sessionId, String goal) {
         String runId = SessionRunIdGenerator.newRunId();
-
         SessionMeta meta = metaStore.readMeta(sessionId);
-        if (meta == null) {
-            log.warn("Session not found: {}", sessionId);
-            return runId;
-        }
+        if (meta == null) { return runId; }
         meta.setState(SessionState.ACTIVE);
         meta.setRunCount(meta.getRunCount() + 1);
         meta.setLastRunId(runId);
         meta.setLastActiveAt(LocalDateTime.now());
         meta.setUpdatedAt(LocalDateTime.now());
         metaStore.writeMeta(sessionId, meta);
-
         eventPublisher.publishEvent(new SessionEvent.RunStarted(this, sessionId, runId, goal));
-        log.info("Run started: session={} runId={} goal={}", sessionId, runId, goal);
         return runId;
     }
 
-    @Override
     public void finishRun(String sessionId, String runId, String status, String reason) {
         SessionMeta meta = metaStore.readMeta(sessionId);
-        if (meta == null) {
-            log.warn("Session not found: {}", sessionId);
-            return;
-        }
+        if (meta == null) return;
         meta.setUpdatedAt(LocalDateTime.now());
         metaStore.writeMeta(sessionId, meta);
         eventPublisher.publishEvent(new SessionEvent.RunFinished(this, sessionId, runId, status, reason));
-        log.info("Run finished: session={} runId={} status={}", sessionId, runId, status);
     }
 
-    @Override
     public ThreadStore getThreadStore() { return threadStore; }
-    @Override
     public NoteStore getNoteStore() { return noteStore; }
-    @Override
     public MetaStore getMetaStore() { return metaStore; }
+    public SessionMeta getSession(String sid) { return metaStore.readMeta(sid); }
 
-    @Override
-    public SessionMeta getSession(String sessionId) { return metaStore.readMeta(sessionId); }
-
-    @Override
-    public boolean isActive(String sessionId) {
-        SessionMeta meta = metaStore.readMeta(sessionId);
+    public boolean isActive(String sid) {
+        SessionMeta meta = metaStore.readMeta(sid);
         return meta != null && meta.getState() == SessionState.ACTIVE;
     }
 
     private void transitionState(String sessionId, SessionState target) {
         SessionMeta meta = metaStore.readMeta(sessionId);
-        if (meta == null) {
-            log.warn("Session not found: {}", sessionId);
-            return;
-        }
-        SessionState oldState = meta.getState();
-        if (oldState == SessionState.COMPLETED || oldState == SessionState.FAILED) {
-            log.warn("Cannot transition session {} from {} to {}", sessionId, oldState, target);
-            return;
-        }
+        if (meta == null) return;
+        SessionState old = meta.getState();
+        if (old == SessionState.COMPLETED || old == SessionState.FAILED) return;
         meta.setState(target);
         meta.setUpdatedAt(LocalDateTime.now());
-        if (target == SessionState.ACTIVE) {
-            meta.setLastActiveAt(LocalDateTime.now());
-        }
+        if (target == SessionState.ACTIVE) meta.setLastActiveAt(LocalDateTime.now());
         metaStore.writeMeta(sessionId, meta);
-        eventPublisher.publishEvent(new SessionEvent.StateChanged(this, sessionId, oldState, target));
-        log.info("Session state changed: id={} {} -> {}", sessionId, oldState, target);
+        eventPublisher.publishEvent(new SessionEvent.StateChanged(this, sessionId, old, target));
     }
 }

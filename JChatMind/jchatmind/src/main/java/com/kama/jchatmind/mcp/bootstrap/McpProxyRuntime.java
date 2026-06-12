@@ -172,7 +172,7 @@ final class McpProxyRuntime {
             return fromUserDir;
         }
         Path moduleFallback = Paths.get(System.getProperty("user.dir"))
-                .resolve("JChatMind/jchatmind/scripts/mcp")
+                .resolve("scripts/mcp")
                 .normalize();
         if (Files.isDirectory(moduleFallback)) {
             log.warn("mcp.proxy.scripts-dir 相对路径未找到，回退到 {}", moduleFallback);

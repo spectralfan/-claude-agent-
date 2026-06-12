@@ -1,16 +1,17 @@
 {
   "mcpServers": {
     "jchatmind-shell": {
-      "comment": "Spring AI 官方 Windows STDIO 格式：npx/node 须 cmd.exe /c 包装",
       "command": "cmd.exe",
       "args": [
         "/c",
         "node",
-        "Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/scripts/mcp/jchatmind-shell-mcp.mjs"
+        "scripts/mcp/jchatmind-shell-mcp.mjs"
       ],
       "env": {
         "JCHATMIND_MCP_PLATFORM": "windows",
-        "JCHATMIND_MCP_EXECUTOR": "powershell"
+        "JCHATMIND_MCP_EXECUTOR": "powershell",
+        "JCHATMIND_PREVIEW_PORT": "5500",
+        "JCHATMIND_RESERVED_PORTS": "8080,3000,5173"
       }
     }
   }

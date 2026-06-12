@@ -35,7 +35,7 @@ public class ChatSessionProvisionerImpl implements ChatSessionProvisioner {
                 .id(sessionId)
                 .agentId(agentId)
                 .title(StringUtils.hasText(title) ? title : "后台会话")
-                .metadata(toMetadataJson(metadata))
+                .type("CODING").metadata(toMetadataJson(metadata))
                 .createdAt(now)
                 .updatedAt(now)
                 .build();

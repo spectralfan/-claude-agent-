@@ -16,7 +16,7 @@ export default function JChatMindLayout() {
       <Content>
         <Routes>
           <Route path='/chat' element={<AgentChatView />} />
-          <Route path='/chat/:sessionId' element={<AgentChatView />} />
+          <Route path='/chat/:chatSessionId' element={<AgentChatView />} />
           <Route path='/coding' element={<CodingView />} />
           <Route path='/coding/:sessionId' element={<CodingView />} />
           <Route path='/knowledge-base' element={<KnowledgeBaseView />} />
