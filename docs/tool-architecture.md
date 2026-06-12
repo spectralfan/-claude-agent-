@@ -23,17 +23,16 @@ Agent allowedTools must contain the tool name.
 | coding_search_tools | FIXED | Code search | Worker |
 | coding_verify_tools | FIXED | Code verify | Worker |
 | coding_run_tool | FIXED | Code execute | Worker |
+| mark_coding_complete | FIXED | Mark task done | Scheduler/Worker |
 | orchestration_task_tools | FIXED | DAG orchestration | Scheduler |
 | orchestration_read_tools | FIXED | DAG read-only | Scheduler/Reviewer |
 | orchestration_shell_tools | FIXED | Shell execute | Worker |
+| delegate_coding_task | FIXED | Delegate coding | Scheduler |
 | dataBaseTool | OPTIONAL | DB query | Custom |
 | fileSystemTool | OPTIONAL | File I/O | Custom |
 | KnowledgeTool | OPTIONAL | RAG search | All |
 | git_tool | OPTIONAL | Git management | Worker |
 | save_note | OPTIONAL | Persist facts | Worker/Scheduler |
-| cityTool | OPTIONAL | City query (demo) | Demo |
-| dateTool | OPTIONAL | Date query (demo) | Demo |
-| weatherTool | OPTIONAL | Weather query (demo) | Demo |
 
 ## 2. MCP Tools
 

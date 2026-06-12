@@ -8,18 +8,20 @@
 
 ### 核心能力
 
-- AI Coding: Scheduler 拆解需求 -> 多 Worker 并行执行 -> Reviewer 自动审查循环
-- 普通对话: 选择任意 Agent 进行智能对话，知识库集成 RAG 问答
-- 知识库: 向量化文档管理，Agent 按需检索
-- Session 管理: thread.jsonl / notes.md / meta.json 三层文件持久化
+| 模块 | 说明 |
+|------|------|
+| AI Coding | Scheduler 拆解需求 -> 多 Worker 并行执行 -> Reviewer 自动审查循环，支持 Continuation 自动继续 |
+| 普通对话 | 选择自定义 Agent 进行智能对话，知识库集成 RAG 问答 |
+| 知识库 | 向量化文档管理(Ollama bge-m3 + PgVector)，Agent 按需检索 |
+| Session 管理 | thread.jsonl / notes.md / meta.json 三层文件持久化，CHAT/CODING 类型分离 |
 
 ### 技术栈
 
 - 后端: Java 17 + Spring Boot 3.5 + Spring AI 1.1 + PostgreSQL 16 + MyBatis + RocketMQ
-- 前端: React + TypeScript + Vite + Ant Design X
+- 前端: React 19 + TypeScript + Vite + Ant Design X
 - LLM: DeepSeek / 智谱 GLM
 - MCP: STDIO 直连子进程 (jchatmind-shell-mcp)
-- 记忆系统: Ollama(bge-m3) + PgVector RAG 分层记忆
+- 编排引擎: Scheduler-Worker-Reviewer DAG 调度 + EventBus + AgentLoop
 
 ## 项目结构
 
@@ -34,4 +36,22 @@ JChatMindv2/
   agent-profiles/       # Agent 角色 YAML 配置
   workspace/            # 工作区产物
   .jchatmind/sessions/  # 会话文件存储 (thread.jsonl)
+```
+
+## 快速开始
+
+```bash
+# 1. 启动 PostgreSQL (Docker)
+docker run -d --name postgres -e POSTGRES_PASSWORD=123456 -p 5432:5432 postgres:16
+
+# 2. 配置 API Key
+export DEEPSEEK_API_KEY=sk-xxxx
+
+# 3. 启动后端
+cd JChatMind/jchatmind
+./mvnw spring-boot:run
+
+# 4. 启动前端
+cd JChatMind/ui
+npm install && npm run dev
 ```
