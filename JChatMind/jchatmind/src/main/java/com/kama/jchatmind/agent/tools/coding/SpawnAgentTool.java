@@ -8,19 +8,29 @@ import com.kama.jchatmind.coding.context.CodingSessionContext;
 import com.kama.jchatmind.coding.context.SubAgentRunContext;
 import com.kama.jchatmind.mapper.AgentMapper;
 import com.kama.jchatmind.model.entity.Agent;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SpawnAgentTool implements Tool {
 
-    private final JChatMindFactory jChatMindFactory;
+    @Autowired
+    private ApplicationContext applicationContext;
+
     private final AgentMapper agentMapper;
+
+    public SpawnAgentTool(AgentMapper agentMapper) {
+        this.agentMapper = agentMapper;
+    }
+
+    private JChatMindFactory getFactory() {
+        return applicationContext.getBean(JChatMindFactory.class);
+    }
 
     @Override
     public String getName() {
@@ -75,7 +85,7 @@ public class SpawnAgentTool implements Tool {
                 goal.substring(0, Math.min(goal.length(), 80)), subAgentId, subSessionId);
 
         try {
-            JChatMind subAgent = jChatMindFactory.createSpawnSubAgent(
+            JChatMind subAgent = getFactory().createSpawnSubAgent(
                     subAgentId, parentSessionId, subSessionId, goal);
             subAgent.run();
 
