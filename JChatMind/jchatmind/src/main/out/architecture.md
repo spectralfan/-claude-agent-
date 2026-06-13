@@ -1,6 +1,6 @@
 # JChatMind 软件架构文档
 
-> 版本：2026-06-09（Phase 5 — Scheduler + DAG 并行编排 + 自动 Reviewer + PostgreSQL 任务图；Graphify 图谱已同步至 commit `bdbb64d`）  
+> 版本：2026-06-13（Phase 5 + Memory Hub Session 管理层 + CHAT/CODING 会话分离 + KamaClaude 架构对比）  
 > 代码根目录：`JChatMind/jchatmind`（后端）、`JChatMind/ui`（前端）  
 > 架构查询：优先使用 Graphify 知识图谱（`graphify-out/graph.json` + `user-graphify` MCP）
 
@@ -255,6 +255,60 @@ IDLE → PLANNING → THINKING ⇄ EXECUTING → OBSERVING → … → FINISHED 
 
 ---
 
+
+## 7.4 会话存储与消息持久化
+
+JChatMindv2 实现了 KamaClaude 风格的 Session/Thread/Notes 三层记忆体系，通过文件系统提供高性能消息存储：
+
+```mermaid
+flowchart LR
+  subgraph Session["会话存储层"]
+    Manager[SessionManager]
+    Meta[MetaStore: meta.json]
+    Thread[ThreadStore: thread.jsonl]
+    Notes[NoteStore: notes.jsonl]
+  end
+  
+  subgraph DB["持久化索引层"]
+    ChatSession[(chat_session)]
+    ChatMessage[(chat_message)]
+  end
+
+  Agent[Agent Loop] -->|saveMessage| Thread
+  Agent -->|持久化| ChatMessage
+  Manager --> Meta
+  Thread -->|异步刷新| ChatMessage
+```
+
+| 组件 | 存储方式 | 功能 |
+|------|---------|------|
+| **ThreadStore** | `{sessionRoot}/{sessionId}/thread.jsonl` | 消息流权威源，JSONL 格式，支持 append/batch/compact(带备份)、裁切 orphan tool_use |
+| **NoteStore** | `{sessionRoot}/{sessionId}/notes.jsonl` | 按 run 追加 notes |
+| **MetaStore** | `{sessionRoot}/{sessionId}/meta.json` | 会话元数据 JSON |
+| **SessionManager** | 文件 + DB | 会话 CRUD、状态管理(activate/pause/complete/fail)、Run 管理 |
+
+**设计原则**：thread.jsonl 是消息的唯一权威源，DB 仅作为索引。消息先写文件（~0.5ms），再异步批量同步到 PostgreSQL。这就是 KamaClaude 风格的"文件优先、DB 索引"策略。
+
+### 7.5 Memory Hub 分层记忆
+
+Memory Hub 提供三层记忆体系，在 chat_message 主链路之外注入智能补充上下文：
+
+| 层级 | 存储位置 | 用途 |
+|------|---------|------|
+| **WORKING** | chat_message 表 + thread.jsonl | 当前会话的完整消息历史 |
+| **RECENT** | t_memory_entry | 同会话早期轮次的压缩摘要 |
+| **ARCHIVE** | t_memory_embedding + pgvector | 跨会话向量检索 |
+
+注入时机：`JChatMindFactory.loadMemory()` → `MemoryIntegration.buildSupplementalContext()`。
+
+### 7.6 CHAT/CODING 会话分离与性能优化
+
+| 优化项 | 说明 |
+|--------|------|
+| **Session Type** | chat_session 区分 `CHAT` / `CODING` 类型，`ChatEventListener` 对 CHAT 跳过 `ensureActiveTask`（避免创建 coding task） |
+| **Agent 缓存** | `@Cacheable("agents")` 缓存 `loadAgent()`，减少 1 DB 查询/消息 |
+| **工具过滤** | `isCodingWorkspaceTool()` 对非 coding 会话过滤掉 bash/shell/maven_command 等 coding 工具 |
+| **编码修复** | JChatMindFactory.java UTF-8 编码修复（中文字符串损坏恢复） |
 ## 8. 工具系统
 
 ### 8.1 本地 Tool 架构
@@ -694,6 +748,68 @@ memory:
 **图谱枢纽**（`links` 度数 Top，2026-06-09）：`api.ts`（112）、`JChatMindFactory`（44）、`CodingWorkspaceService`（43）、`OrchestrationTaskService`（42）、`JChatMind`（39）、`command-runner.mjs`（51）、`CodingView.tsx`（53）、`CodingVerifyTools`（34）。
 
 ---
+
+## 19.5 与 KamaClaude 架构对比
+
+KamaClaude（[GitHub](https://github.com/youngyangyang04/KamaClaude)）是一个从零实现的本地 Agent 运行时，JChatMindv2 在核心 Agent Loop 设计上与其高度一致。
+
+### 核心架构对比
+
+| 维度 | JChatMindv2 | KamaClaude |
+|------|-------------|------------|
+| 语言 | Java 17 + Spring Boot | Python 3.12+ |
+| 架构 | 单体 Web 应用 (HTTP REST + SSE) | Daemon (TCP) + CLI/TUI 多客户端 |
+| 通信 | HTTP 请求/SSE 推送 | JSON-RPC 2.0 over TCP NDJSON |
+| 状态存储 | PostgreSQL + 文件双写 (thread.jsonl) | 纯文件 (events.jsonl, sessions) |
+| 进程模型 | 多线程 Spring Boot (Tomcat) | 单进程 asyncio |
+| Agent Loop | JChatMind.run() → reason → act → observe | AgentRunner/AgentLoop → 同模式 |
+| MCP | 子进程 MCP server, Spring 集成 | Python MCP client |
+| 工具安全 | ❌ 无权限审批 | ✅ PermissionManager |
+| 上下文治理 | ✅ 窗口裁剪 + 工具结果压缩 | ✅ 水位检测 + budget |
+| 工具审批 | ❌ 无 | ✅ PermissionManager |
+| Skills | ❌ 无 | ✅ Skills 工作流模板 |
+| 测试 | ⚠️ 少量 | ✅ pytest + mypy strict + ruff |
+
+### Agent Loop 对比
+
+```
+JChatMindv2:                        KamaClaude:
+JChatMind.run()                     AgentRunner.run()
+  ├─ loopStep(i)                      ├─ loop_step(i)
+  │  ├─ 1. reason()  ← LLM 推理       │  ├─ 1. reason()  ← LLM 推理
+  │  ├─ 2. act()     ← 执行工具       │  ├─ 2. act()     ← 执行工具
+  │  └─ 3. observe() ← 观察结果       │  └─ 3. observe() ← 观察结果
+  └─ 循环直到 FINISHED                 └─ 循环直到 FINISHED
+```
+
+### 多 Agent 角色对比
+
+| JChatMindv2 | KamaClaude |
+|-------------|-----------|
+| Scheduler (Orchestrator) → 委派任务 | Planner → 拆分任务 |
+| Worker → 写文件、执行命令 | Executor → 写文件、执行命令 |
+| Reviewer → 只读审查 | Reviewer → 只读审查 |
+
+### 相同点
+- **ReAct Agent Loop**：reason → act → observe 闭环完全一致
+- **Scheduler-Worker-Reviewer** 三角色设计理念相同
+- **MCP 扩展**：都支持 MCP 外部工具接入
+- **事件推送**：SSE (JChatMind) / EventBus (KamaClaude)
+- **Session/Thread/Notes**：两套体系设计一致
+- **上下文压缩**：JChatMind 用窗口裁剪 + compact, KamaClaude 用水位检测 + budget
+
+### 差异点（JChatMindv2 优势）
+- 知识库 RAG 检索（KamaClaude 无）
+- Memory Hub 向量记忆 + RECENT/ARCHIVE 分层（KamaClaude 纯文件）
+- Web 管理界面（KamaClaude TUI only）
+- 工业级持久化（KamaClaude 无持久化）
+
+### 差异点（KamaClaude 优势）
+- 工具调用前权限审批（JChatMind 工具裸跑）
+- Skills 工作流模板
+- 完善的测试体系
+- 守护进程 + 多客户端架构
+- 零基建延迟（~5ms vs JChatMind ~100ms+）
 
 ## 20. 相关文档
 

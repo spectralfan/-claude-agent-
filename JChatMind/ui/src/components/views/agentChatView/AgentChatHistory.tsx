@@ -272,9 +272,9 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
                     {message.content && (
                       <div>
                         <XMarkdown
-                          streaming={{ enableAnimation: false, hasNextChunk: true }}
+                          streaming={{ enableAnimation: false, hasNextChunk: false }}
                         >
-                          {message.content}
+                          {message.content.replace(/\\n/g, '\n')}
                         </XMarkdown>
                       </div>
                     )}
@@ -295,7 +295,7 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
 
             {/* User 消息 */}
             {message.role === "user" && (
-              <Bubble content={message.content} placement="end" />
+              <Bubble content={message.content.replace(/\\n/g, '\n')} placement="end" />
             )}
 
             {/* System 消息 */}
@@ -303,7 +303,7 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
               <div className="flex justify-center">
                 <div className="px-3 py-1 bg-gray-100 text-gray-600 text-xs rounded-full flex items-center gap-1">
                   <RobotOutlined />
-                  <span>{message.content}</span>
+                  <span>{message.content.replace(/\\n/g, '\n')}</span>
                 </div>
               </div>
             )}

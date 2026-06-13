@@ -8,6 +8,8 @@ import com.kama.jchatmind.converter.ChatMessageConverter;
 import com.kama.jchatmind.event.ChatEvent;
 import com.kama.jchatmind.exception.BizException;
 import com.kama.jchatmind.mapper.ChatMessageMapper;
+import com.kama.jchatmind.mapper.ChatSessionMapper;
+import com.kama.jchatmind.model.entity.ChatSession;
 import com.kama.jchatmind.memory.config.MemoryProperties;
 import com.kama.jchatmind.memory.model.dto.MemorySaveDTO;
 import com.kama.jchatmind.memory.model.dto.ToolCallInfo;
@@ -44,6 +46,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
     private final ApplicationEventPublisher publisher;
     private final MemoryProperties memoryProperties;
     private final MemoryService memoryService;
+    private final ChatSessionMapper chatSessionMapper;
     private final ToolResultCompactor toolResultCompactor;
     private final SessionManager sessionManager;
 
@@ -100,11 +103,17 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
     @Override
     public CreateChatMessageResponse createChatMessage(CreateChatMessageRequest request) {
         ChatMessage chatMessage = doCreateChatMessage(request);
-        publisher.publishEvent(new ChatEvent(
-                request.getAgentId(),
-                chatMessage.getSessionId(),
-                chatMessage.getContent()
-        ));
+        String st = "CHAT";
+        try {
+            ChatSession sess = chatSessionMapper.selectById(chatMessage.getSessionId());
+            if (sess != null) st = sess.getType();
+        } catch (Exception ignored) {}
+        publisher.publishEvent(ChatEvent.builder()
+                .agentId(request.getAgentId())
+                .sessionId(chatMessage.getSessionId())
+                .userInput(chatMessage.getContent())
+                .sessionType(st)
+                .build());
         return CreateChatMessageResponse.builder()
                 .chatMessageId(chatMessage.getId())
                 .build();

@@ -48,6 +48,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Component
+@org.springframework.cache.annotation.EnableCaching
 public class JChatMindFactory {
 
     private static final Logger log = LoggerFactory.getLogger(JChatMindFactory.class);
@@ -124,6 +125,7 @@ public class JChatMindFactory {
         return codingPromptComposer.composeSystemPrompt(basePrompt, chatSessionId, agentConfig);
     }
 
+    @org.springframework.cache.annotation.Cacheable(value = "agents", key = "#agentId")
     private Agent loadAgent(String agentId) {
         return agentMapper.selectById(agentId);
     }
@@ -325,7 +327,8 @@ public class JChatMindFactory {
     private List<Tool> resolveRuntimeTools(AgentDTO agentConfig, String sessionId) {
         // 固定工具（系统强制）
         List<Tool> runtimeTools = new ArrayList<>(toolFacadeService.getFixedTools());
-        if (sessionId != null && codingTaskService.getActiveTask(sessionId) != null) {
+        boolean hasActiveCodingTask = sessionId != null && codingTaskService.getActiveTask(sessionId) != null;
+        if (hasActiveCodingTask) {
             runtimeTools.removeIf(t -> KNOWLEDGE_TOOL_NAME.equals(t.getName()));
         }
 
@@ -345,6 +348,9 @@ public class JChatMindFactory {
                 runtimeTools.add(tool);
             }
         }
+        if (!hasActiveCodingTask) {
+            runtimeTools.removeIf(t -> isCodingWorkspaceTool(t.getName()));
+        }
         return runtimeTools;
     }
 
@@ -359,6 +365,14 @@ public class JChatMindFactory {
             callbacks.addAll(Arrays.asList(toolCallbacks));
         }
         return callbacks;
+    }
+
+    private boolean isCodingWorkspaceTool(String name) {
+        return name != null && (name.contains("coding_") || name.contains("orchestration_")
+                || name.equals("mark_coding_complete") || name.equals("delegate_coding_task")
+                || name.equals("bash") || name.equals("run_terminal_cmd") || name.equals("maven_command")
+                || name.equals("shell") || name.equals("shell_exec") || name.equals("shell_execute")
+                || name.equals("execute_command"));
     }
 
     private Object resolveToolTarget(Tool tool) {

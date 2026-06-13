@@ -309,6 +309,7 @@
 | 2026-06-12 | 前端/后端重构：Session 类型化（CHAT/CODING）+ 路由分离 + 对话与编码双入口 | Reasonix |
 | 2026-06-12 | MCP 工具优化：Shell 统一(规范化bash) + Git工具(git_status/diff/log/commit) + read_url + ToolResult/BaseTool 标准化 | Reasonix |
 | 2026-06-12 | DB 优化：加索引、删14张电商表、统一UUID类型、删除时清理文件 + Session分类 + MCP STDIO直连 + 路由参数修复 | Reasonix |
+| 2026-06-13 | 性能优化：Agent 缓存 + 编码修复 + CHAT/CODING 会话分离 + AJD 过滤 | Reasonix |
 
 
 

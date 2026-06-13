@@ -35,8 +35,11 @@ public class ChatEventListener {
     public void handle(ChatEvent event) {
         CodingSessionContext.set(event.getSessionId(), event.getAgentId());
         try {
-            CodingTask active = codingTaskAutoProvisioner.ensureActiveTask(
-                    event.getSessionId(), event.getAgentId());
+            CodingTask active = null;
+            if (!"CHAT".equals(event.getSessionType())) {
+                active = codingTaskAutoProvisioner.ensureActiveTask(
+                        event.getSessionId(), event.getAgentId());
+            }
             if (active != null) {
                 boolean stackDetected = codingTaskService.applyDetectedStackIfAbsent(active);
                 if (stackDetected) {
