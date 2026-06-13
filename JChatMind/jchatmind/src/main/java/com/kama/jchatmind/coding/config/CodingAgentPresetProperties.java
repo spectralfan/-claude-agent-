@@ -14,4 +14,7 @@ public class CodingAgentPresetProperties {
 
     /** classpath 预设 JSON 路径 */
     private String resource = "classpath:coding-agent-preset.json";
+
+    /** classpath Main Agent 预设 JSON 路径 */
+    private String mainAgentResource = "classpath:main-agent-preset.json";
 }

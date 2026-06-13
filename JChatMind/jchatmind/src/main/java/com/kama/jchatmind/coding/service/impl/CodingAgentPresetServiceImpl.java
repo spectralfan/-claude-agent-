@@ -22,6 +22,7 @@ public class CodingAgentPresetServiceImpl implements CodingAgentPresetService {
             return;
         }
         bootstrapService.ensurePreset(properties.getResource(), "Coding Agent");
+        bootstrapService.ensurePreset(properties.getMainAgentResource(), "Main Agent");
     }
 
     @Override
