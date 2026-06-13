@@ -2,6 +2,8 @@ package com.kama.jchatmind.session.loop;
 
 import com.kama.jchatmind.session.ExecutionContext;
 import com.kama.jchatmind.session.RunOutcome;
+import com.kama.jchatmind.session.compact.CompactProperties;
+import com.kama.jchatmind.session.compact.ContextCompactor;
 import com.kama.jchatmind.session.event.EventBus;
 import com.kama.jchatmind.session.event.StepFinishedEvent;
 import com.kama.jchatmind.session.event.StepStartedEvent;
@@ -23,9 +25,9 @@ import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 @Service
 public class AgentLoop {
@@ -35,16 +37,19 @@ public class AgentLoop {
     private final ChatClient chatClient;
     private final ToolCallingManager toolCallingManager;
     private final EventBus eventBus;
+    private final ContextCompactor compactor;
+    private final CompactProperties compactProperties;
     private final ChatOptions chatOptions;
+    private Path sessionDir;
 
-    public AgentLoop(@Qualifier("deepseek-chat") ChatClient chatClient, ToolCallingManager toolCallingManager, EventBus eventBus) {
-        this.chatClient = chatClient;
-        this.toolCallingManager = toolCallingManager;
-        this.eventBus = eventBus;
-        this.chatOptions = DefaultToolCallingChatOptions.builder()
-                .internalToolExecutionEnabled(false)
-                .build();
+    public AgentLoop(@Qualifier("deepseek-chat") ChatClient cc, ToolCallingManager tcm, EventBus eb,
+                     ContextCompactor compactor, CompactProperties cp) {
+        this.chatClient = cc; this.toolCallingManager = tcm; this.eventBus = eb;
+        this.compactor = compactor; this.compactProperties = cp;
+        this.chatOptions = DefaultToolCallingChatOptions.builder().internalToolExecutionEnabled(false).build();
     }
+
+    public void setSessionDir(Path sessionDir) { this.sessionDir = sessionDir; }
 
     public RunOutcome run(ExecutionContext ctx, List<ToolCallback> toolCallbacks) {
         String runId = ctx.getRunId();
@@ -70,14 +75,18 @@ public class AgentLoop {
                         .chatResponse();
             } catch (Exception e) {
                 log.error("LLM call failed runId={} step={}: {}", runId, step, e.getMessage());
-                ctx.markFailed("llm_error");
-                break;
+                ctx.markFailed("llm_error"); break;
+            }
+
+            // Track context usage
+            if (response.getMetadata() != null && response.getMetadata().containsKey("usage")) {
+                try {
+                    var usage = response.getMetadata().get("usage");
+                } catch (Exception ignored) {}
             }
 
             AssistantMessage output = response.getResult().getOutput();
             List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
-
-            // Add assistant message
             ctx.getMessages().add(output);
 
             if (toolCalls == null || toolCalls.isEmpty()) {
@@ -87,43 +96,38 @@ public class AgentLoop {
                 break;
             }
 
-            // Publish tool call events
             for (AssistantMessage.ToolCall tc : toolCalls) {
                 eventBus.publish(new ToolCalledEvent(runId, tc.name(), tc.arguments(), step));
             }
 
-            // Execute tools
             try {
-                Prompt actPrompt = Prompt.builder()
-                        .messages(ctx.getMessages())
-                        .chatOptions(this.chatOptions)
-                        .build();
+                Prompt actPrompt = Prompt.builder().messages(ctx.getMessages()).chatOptions(this.chatOptions).build();
                 ToolExecutionResult result = toolCallingManager.executeToolCalls(actPrompt, response);
-
                 ToolResponseMessage toolResponse = (ToolResponseMessage) result.conversationHistory()
                         .get(result.conversationHistory().size() - 1);
-
-                // Publish tool result events
                 for (ToolResponseMessage.ToolResponse tr : toolResponse.getResponses()) {
                     eventBus.publish(new ToolResultEvent(runId, tr.name(), tr.responseData(), false, step));
                 }
-
-                // Update messages with full conversation history
                 ctx.getMessages().clear();
                 ctx.getMessages().addAll(result.conversationHistory());
             } catch (Exception e) {
                 log.warn("Tool execution error runId={} step={}: {}", runId, step, e.getMessage());
-                ctx.markFailed("tool_error: " + e.getMessage());
-                break;
+                ctx.markFailed("tool_error"); break;
             }
 
             if (ctx.getStep() >= ctx.getMaxSteps()) {
                 ctx.markFailed("exceeded_max_steps");
-                eventBus.publish(new StepFinishedEvent(runId, step, now(), "failed"));
-                break;
+                eventBus.publish(new StepFinishedEvent(runId, step, now(), "failed")); break;
             }
 
             eventBus.publish(new StepFinishedEvent(runId, step, now(), "running"));
+
+            // Context compaction check — KamaClaude style
+            if (!ctx.isDone() && toolCalls != null && !toolCalls.isEmpty()
+                    && compactProperties.isEnabled() && ctx.getContextPct() >= compactProperties.getThreshold()
+                    && sessionDir != null) {
+                compactor.compact(ctx, sessionDir);
+            }
         }
 
         return new RunOutcome(ctx.getStatus(), ctx.getResult(), ctx.getReason(), ctx.getStep());

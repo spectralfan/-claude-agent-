@@ -6,9 +6,7 @@ import com.kama.jchatmind.coding.config.OrchestrationProperties;
 import com.kama.jchatmind.model.dto.AgentDTO;
 import com.kama.jchatmind.coding.model.dto.CodingStackDTO;
 import com.kama.jchatmind.coding.model.dto.CodingTaskMetadata;
-import com.kama.jchatmind.coding.model.dto.OrchestrationTaskSpec;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
-import com.kama.jchatmind.coding.model.enums.OrchestrationTaskRole;
 import com.kama.jchatmind.coding.service.CodingPromptComposer;
 import com.kama.jchatmind.coding.service.CodingSkillService;
 import com.kama.jchatmind.coding.service.CodingStackService;
@@ -81,36 +79,6 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
                 .orElse(prompt);
     }
 
-    @Override
-    public String composeRolePrompt(OrchestrationTaskSpec spec, AgentDTO agentConfig) {
-        String base = agentConfig.getSystemPrompt() != null ? agentConfig.getSystemPrompt() : "";
-        CodingTask parentTask = codingTaskService.getActiveTask(spec.getParentSessionId());
-        StringBuilder sb = new StringBuilder(base);
-
-        sb.append("\n\n## 编排子任务\n");
-        sb.append("- taskId: ").append(spec.getTaskId()).append('\n');
-        sb.append("- role: ").append(spec.getRole().getCode()).append('\n');
-        sb.append("- title: ").append(spec.getTitle()).append('\n');
-        if (parentTask != null) {
-            sb.append("- 工作区根: ").append(parentTask.getWorkspaceRoot() != null
-                    ? parentTask.getWorkspaceRoot() : "(默认)").append('\n');
-            sb.append("- 子路径: ").append(parentTask.getWorkspacePath() != null
-                    ? parentTask.getWorkspacePath() : ".").append('\n');
-            if (spec.getRole() == OrchestrationTaskRole.WORKER) {
-                sb.append(buildCodingAutonomousBlock(parentTask, true));
-                sb.append(buildWorkerSubtaskBlock());
-            } else if (spec.getRole() == OrchestrationTaskRole.REVIEWER) {
-                sb.append(buildReviewerRoleBlock());
-            }
-        }
-
-        sb.append("\n## 任务目标\n").append(spec.getGoal()).append('\n');
-        if (spec.getConstraints() != null && !spec.getConstraints().isBlank()) {
-            sb.append("\n## 约束\n").append(spec.getConstraints()).append('\n');
-        }
-        sb.append(buildContextFilesBlock(parentTask, spec.getContextFiles()));
-        return sb.toString();
-    }
 
     private String buildContextFilesBlock(CodingTask task, List<String> contextFiles) {
         if (contextFiles == null || contextFiles.isEmpty() || task == null) {

@@ -82,6 +82,14 @@
         LIMIT 1
     </select>
 
+    <select id="selectLatestBySession" resultMap="BaseResultMap">
+        SELECT <include refid="Select_Column_List"/>
+        FROM t_coding_task
+        WHERE session_id = CAST(#{sessionId} AS uuid)
+        ORDER BY started_at DESC
+        LIMIT 1
+    </select>
+
     <update id="updateStatus">
         UPDATE t_coding_task
         <set>

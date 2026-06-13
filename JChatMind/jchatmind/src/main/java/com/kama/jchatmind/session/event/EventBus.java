@@ -12,26 +12,20 @@ import java.util.function.Consumer;
 public class EventBus {
 
     private static final Logger log = LoggerFactory.getLogger(EventBus.class);
-    private final List<Consumer<Object>> handlers = new CopyOnWriteArrayList<>();
+    private final List<Consumer<? super Event>> handlers = new CopyOnWriteArrayList<>();
 
-    public void subscribe(Consumer<Object> handler) {
-        if (handler != null) {
-            handlers.add(handler);
-        }
+    public void subscribe(Consumer<? super Event> handler) {
+        if (handler != null) handlers.add(handler);
     }
 
-    public void unsubscribe(Consumer<Object> handler) {
+    public void unsubscribe(Consumer<? super Event> handler) {
         handlers.remove(handler);
     }
 
-    public void publish(Object event) {
-        for (Consumer<Object> handler : handlers) {
-            try {
-                handler.accept(event);
-            } catch (Exception e) {
-                log.warn("EventBus handler error for event={}: {}",
-                        event.getClass().getSimpleName(), e.getMessage());
-            }
+    public void publish(Event event) {
+        for (Consumer<? super Event> handler : handlers) {
+            try { handler.accept(event); }
+            catch (Exception e) { log.warn("EventBus error for {}: {}", event.getType(), e.getMessage()); }
         }
     }
 }

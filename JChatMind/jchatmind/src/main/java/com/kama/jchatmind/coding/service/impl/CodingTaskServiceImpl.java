@@ -154,7 +154,12 @@ public class CodingTaskServiceImpl implements CodingTaskService {
 
     @Override
     public CodingTask getActiveTask(String sessionId) {
-        return codingTaskMapper.selectActiveBySession(sessionId);
+        CodingTask task = codingTaskMapper.selectActiveBySession(sessionId);
+        if (task == null) {
+            // Fallback: return the most recent task for this session, any status
+            task = codingTaskMapper.selectLatestBySession(sessionId);
+        }
+        return task;
     }
 
     @Override

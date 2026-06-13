@@ -1,31 +1,19 @@
 package com.kama.jchatmind.session;
-
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
-
 import java.util.ArrayList;
 import java.util.List;
 
 public class ExecutionContext {
-
-    private final String runId;
-    private final String goal;
-    private final int maxSteps;
+    private final String runId; private final String goal; private final int maxSteps;
     private final List<Message> messages;
-    private int step;
-    private String status;
-    private String reason;
-    private String result;
-    private String sessionNotes;
-    private String systemPromptOverride;
+    private int step; private String status; private String reason; private String result;
+    private String sessionNotes; private String systemPromptOverride;
+    private double contextPct;
 
     public ExecutionContext(String runId, String goal, int maxSteps) {
-        this.runId = runId;
-        this.goal = goal;
-        this.maxSteps = maxSteps;
-        this.messages = new ArrayList<>();
-        this.step = 0;
-        this.status = "running";
+        this.runId = runId; this.goal = goal; this.maxSteps = maxSteps;
+        this.messages = new ArrayList<>(); this.step = 0; this.status = "running";
         this.messages.add(new UserMessage(goal));
     }
 
@@ -44,6 +32,8 @@ public class ExecutionContext {
     public void setSessionNotes(String notes) { this.sessionNotes = notes; }
     public String getSystemPromptOverride() { return systemPromptOverride; }
     public void setSystemPromptOverride(String sp) { this.systemPromptOverride = sp; }
+    public double getContextPct() { return contextPct; }
+    public void setContextPct(double pct) { this.contextPct = pct; }
     public boolean isDone() { return !"running".equals(status); }
     public void markSuccess() { this.status = "success"; }
     public void markFailed(String reason) { this.status = "failed"; this.reason = reason; }

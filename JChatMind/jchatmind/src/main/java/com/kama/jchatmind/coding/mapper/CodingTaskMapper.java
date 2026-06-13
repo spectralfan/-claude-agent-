@@ -17,6 +17,7 @@ public interface CodingTaskMapper {
      * 查找 session 当前活动任务（running / waiting_approval）。
      */
     CodingTask selectActiveBySession(@Param("sessionId") String sessionId);
+    CodingTask selectLatestBySession(@Param("sessionId") String sessionId);
 
     int updateStatus(@Param("id") String id,
                      @Param("status") String status,

@@ -7,7 +7,6 @@ import com.kama.jchatmind.coding.service.CodingApprovalService;
 import com.kama.jchatmind.coding.service.CodingCommandService;
 import com.kama.jchatmind.coding.service.CodingCommandService;
 import com.kama.jchatmind.coding.service.CodingTaskService;
-import com.kama.jchatmind.coding.service.CodingTaskSummaryService;
 import com.kama.jchatmind.coding.service.CodingWorkspaceService;
 import com.kama.jchatmind.model.common.ApiResponse;
 import com.kama.jchatmind.message.SseMessage;
@@ -28,7 +27,6 @@ public class CodingController {
     private final CodingApprovalService codingApprovalService;
     private final CodingRunTool codingRunTool;
     private final CodingWorkspaceService codingWorkspaceService;
-    private final CodingTaskSummaryService codingTaskSummaryService;
     private final RealtimeNotifier realtimeNotifier;
     private final CodingCommandService codingCommandService;
 
@@ -133,11 +131,6 @@ public class CodingController {
     @GetMapping("/{taskId}")
     public ApiResponse<CodingTaskDTO> getTask(@PathVariable String taskId) {
         return ApiResponse.success(codingTaskService.getTask(taskId));
-    }
-
-    @GetMapping("/{taskId}/summary")
-    public ApiResponse<CodingTaskSummaryDTO> getTaskSummary(@PathVariable String taskId) {
-        return ApiResponse.success(codingTaskSummaryService.getSummary(taskId));
     }
 
     @GetMapping("/{taskId}/tree")

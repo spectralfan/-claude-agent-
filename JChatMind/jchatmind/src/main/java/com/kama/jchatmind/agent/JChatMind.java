@@ -593,6 +593,17 @@ public class JChatMind {
         this.schedulerMode = schedulerMode;
     }
 
+    public String getFinalOutput() {
+        List<Message> messages = this.chatMemory.get(this.chatSessionId);
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i) instanceof AssistantMessage am
+                    && org.springframework.util.StringUtils.hasText(am.getText())) {
+                return am.getText();
+            }
+        }
+        return "";
+    }
+
     // 运行
     public void run() {
         if (agentState != AgentState.IDLE) {

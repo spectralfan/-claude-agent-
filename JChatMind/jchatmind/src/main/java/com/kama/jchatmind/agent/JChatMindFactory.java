@@ -12,7 +12,6 @@ import com.kama.jchatmind.converter.KnowledgeBaseConverter;
 import com.kama.jchatmind.coding.CodingAgentRoles;
 import com.kama.jchatmind.coding.config.CodingProperties;
 import com.kama.jchatmind.coding.config.CodingSubagentProperties;
-import com.kama.jchatmind.coding.model.dto.OrchestrationTaskSpec;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
 import com.kama.jchatmind.coding.service.CodingTaskService;
 import com.kama.jchatmind.coding.service.CodingPromptComposer;
@@ -546,6 +545,30 @@ public class JChatMindFactory {
     /**
      * 创建子 Agent：独立 chatMemory（subSessionId），Coding 上下文与 SSE 绑定父会话。
      */
+    /**
+     * 为 spawn_agent 创建子 Agent：不按角色过滤工具，子 Agent 拥有 Agent 配置的全部工具。
+     */
+    public JChatMind createSpawnSubAgent(String agentId, String parentSessionId,
+                                         String subSessionId, String goal) {
+        Agent agent = loadAgent(agentId);
+        AgentDTO agentConfig = toAgentConfig(agent);
+        List<Message> memory = new ArrayList<>();
+        memory.add(new UserMessage(goal));
+
+        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig, parentSessionId);
+        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig, parentSessionId);
+        List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
+
+        injectMcpToolCallbacks(toolCallbacks, agentConfig, parentSessionId, agentId);
+        JChatMind jChatMind = buildAgentRuntime(
+                agent, memory, knowledgeBases, toolCallbacks, subSessionId, parentSessionId, true);
+        jChatMind.setEventSessionId(parentSessionId);
+        if (codingTaskService.getActiveTask(parentSessionId) != null) {
+            jChatMind.setMaxSteps(codingSubagentProperties.getMaxLoopSteps());
+        }
+        return jChatMind;
+    }
+
     public JChatMind createSubAgent(String workerAgentId, String parentSessionId,
                                     String subSessionId, String goal) {
         Agent agent = loadAgent(workerAgentId);
@@ -565,38 +588,6 @@ public class JChatMindFactory {
         if (codingTaskService.getActiveTask(parentSessionId) != null) {
             jChatMind.setMaxSteps(codingSubagentProperties.getMaxLoopSteps());
         }
-        return jChatMind;
-    }
-
-    /**
-     * 按编排角色创建子 Agent：memory 仅 SystemMessage(rolePrompt) + UserMessage("开始执行")。
-     */
-    public JChatMind createRoleAgent(OrchestrationTaskSpec spec, String subSessionId) {
-        Agent agent = loadAgent(spec.getAgentId());
-        AgentDTO agentConfig = toAgentConfig(agent);
-        String rolePrompt = codingPromptComposer.composeRolePrompt(spec, agentConfig);
-        List<Message> memory = new ArrayList<>();
-        memory.add(new SystemMessage(rolePrompt));
-        memory.add(new UserMessage("开始执行"));
-
-        CodingAgentRoles.AgentRole role = CodingAgentRoles.resolveRole(agentConfig);
-        List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig, spec.getParentSessionId());
-        List<Tool> runtimeTools = CodingAgentRoles.filterToolsByRole(
-                resolveRuntimeTools(agentConfig, spec.getParentSessionId()), role);
-        List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
-
-        injectMcpToolCallbacks(toolCallbacks, agentConfig, spec.getParentSessionId(), spec.getAgentId());
-        JChatMind jChatMind = buildAgentRuntimeWithCustomSystem(
-                agent,
-                rolePrompt,
-                memory,
-                knowledgeBases,
-                toolCallbacks,
-                subSessionId,
-                spec.getParentSessionId(),
-                true);
-        jChatMind.setEventSessionId(spec.getParentSessionId());
-        jChatMind.setMaxSteps(codingSubagentProperties.getMaxLoopSteps());
         return jChatMind;
     }
 

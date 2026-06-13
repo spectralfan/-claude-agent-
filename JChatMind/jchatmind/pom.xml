@@ -30,7 +30,7 @@
         <java.version>17</java.version>
     </properties>
 
-    <!-- 自动管理 SpringAI 所有依赖的版本 -->
+    <!-- 鑷姩绠＄悊 SpringAI 鎵€鏈変緷璧栫殑鐗堟湰 -->
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -44,7 +44,7 @@
     </dependencyManagement>
 
     <dependencies>
-        <!-- 基础工具 -->
+        <!-- 鍩虹宸ュ叿 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
@@ -71,14 +71,14 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- 解析 markdown 文件 -->
+        <!-- 瑙ｆ瀽 markdown 鏂囦欢 -->
         <dependency>
             <groupId>com.vladsch.flexmark</groupId>
             <artifactId>flexmark-all</artifactId>
             <version>0.64.8</version>
         </dependency>
 
-        <!-- 数据访问 -->
+        <!-- 鏁版嵁璁块棶 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
@@ -93,7 +93,7 @@
             <version>3.0.3</version>
         </dependency>
 
-        <!-- Spring AI 相关模型, deepseek 和 zhipuai -->
+        <!-- Spring AI 鐩稿叧妯″瀷, deepseek 鍜?zhipuai -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-deepseek</artifactId>
@@ -103,19 +103,23 @@
             <artifactId>spring-ai-starter-model-zhipuai</artifactId>
         </dependency>
 
-        <!-- Spring AI MCP 客户端：官方 MCP Java SDK（stdio/SSE/streamable-http 传输 + ToolCallback 桥接） -->
+        <!-- Spring AI MCP 瀹㈡埛绔細瀹樻柟 MCP Java SDK锛坰tdio/SSE/streamable-http 浼犺緭 + ToolCallback 妗ユ帴锛?-->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-mcp-client</artifactId>
         </dependency>
 
-        <!-- 邮件发送 -->
+        <!-- 閭欢鍙戦€?-->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
 
-        <!-- RocketMQ：realtime.messaging.mode=rocketmq 时用于 Chat/Coding 事件推送 -->
+        <!-- RocketMQ锛歳ealtime.messaging.mode=rocketmq 鏃剁敤浜?Chat/Coding 浜嬩欢鎺ㄩ€?-->
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-spring-boot-starter</artifactId>

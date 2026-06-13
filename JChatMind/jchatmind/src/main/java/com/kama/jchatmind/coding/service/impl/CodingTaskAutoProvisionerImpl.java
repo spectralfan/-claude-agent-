@@ -34,7 +34,7 @@ public class CodingTaskAutoProvisionerImpl implements CodingTaskAutoProvisioner 
             return active;
         }
         if (bindingService.findBinding(sessionId).isEmpty()) {
-            return null;
+            log.info("No binding for session={}, using default", sessionId);
         }
         CreateCodingTaskRequest request = buildCreateRequest(sessionId, agentId);
         String taskId = codingTaskService.createTask(request);

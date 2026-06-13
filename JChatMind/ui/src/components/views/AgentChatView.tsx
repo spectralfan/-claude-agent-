@@ -48,6 +48,8 @@ const AgentChatView: React.FC = () => {
     fetchData().then();
   }, [chatSessionId]);
 
+  useEffect(() => { setMessages([]); setAgentId(''); }, [chatSessionId]);
+
   useEffect(() => {
     if (!chatSessionId) {
       return;
