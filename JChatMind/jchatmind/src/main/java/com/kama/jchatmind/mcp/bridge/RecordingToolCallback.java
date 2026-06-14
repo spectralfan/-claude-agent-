@@ -3,15 +3,14 @@ package com.kama.jchatmind.mcp.bridge;
 import com.kama.jchatmind.coding.bridge.CodingMcpOutputBridge;
 import com.kama.jchatmind.mcp.model.entity.McpToolCall;
 import com.kama.jchatmind.mcp.model.enums.McpCallStatus;
+import com.kama.jchatmind.mcp.permission.PermissionManager;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 
-/**
- * 在 MCP {@link ToolCallback} 外包一层：委托执行、计时、异步埋点。
- * 工具调用异常不抛出，而是作为工具输出返回，避免中断 Agent 主循环。
- */
+import java.util.UUID;
+
 public class RecordingToolCallback implements ToolCallback {
 
     private final ToolCallback delegate;
@@ -19,39 +18,29 @@ public class RecordingToolCallback implements ToolCallback {
     private final McpCallRecorder recorder;
     private final boolean recordCalls;
     private final CodingMcpOutputBridge codingMcpOutputBridge;
-    private final McpShellArgumentEnricher shellArgumentEnricher;
-    private final McpShellCommandPolicy shellCommandPolicy;
+    private final PermissionManager permissionManager;
 
     public RecordingToolCallback(ToolCallback delegate, String serverId,
                                  McpCallRecorder recorder, boolean recordCalls) {
-        this(delegate, serverId, recorder, recordCalls, null, null, null);
+        this(delegate, serverId, recorder, recordCalls, null, null);
     }
 
     public RecordingToolCallback(ToolCallback delegate, String serverId,
                                  McpCallRecorder recorder, boolean recordCalls,
                                  CodingMcpOutputBridge codingMcpOutputBridge) {
-        this(delegate, serverId, recorder, recordCalls, codingMcpOutputBridge, null, null);
+        this(delegate, serverId, recorder, recordCalls, codingMcpOutputBridge, null);
     }
 
     public RecordingToolCallback(ToolCallback delegate, String serverId,
                                  McpCallRecorder recorder, boolean recordCalls,
                                  CodingMcpOutputBridge codingMcpOutputBridge,
-                                 McpShellArgumentEnricher shellArgumentEnricher) {
-        this(delegate, serverId, recorder, recordCalls, codingMcpOutputBridge, shellArgumentEnricher, null);
-    }
-
-    public RecordingToolCallback(ToolCallback delegate, String serverId,
-                                 McpCallRecorder recorder, boolean recordCalls,
-                                 CodingMcpOutputBridge codingMcpOutputBridge,
-                                 McpShellArgumentEnricher shellArgumentEnricher,
-                                 McpShellCommandPolicy shellCommandPolicy) {
+                                 PermissionManager permissionManager) {
         this.delegate = delegate;
         this.serverId = serverId;
         this.recorder = recorder;
         this.recordCalls = recordCalls;
         this.codingMcpOutputBridge = codingMcpOutputBridge;
-        this.shellArgumentEnricher = shellArgumentEnricher;
-        this.shellCommandPolicy = shellCommandPolicy;
+        this.permissionManager = permissionManager;
     }
 
     @Override
@@ -76,57 +65,42 @@ public class RecordingToolCallback implements ToolCallback {
 
     private String invoke(String toolInput, ToolContext toolContext) {
         String toolName = delegate.getToolDefinition().name();
-        String effectiveInput = enrichShellInput(toolName, toolInput);
         long start = System.currentTimeMillis();
-        if (shellCommandPolicy != null && McpToolAliasRegistry.isTerminalToolName(toolName)) {
-            var blocked = shellCommandPolicy.rejectReason(effectiveInput);
-            if (blocked.isPresent()) {
-                String msg = blocked.get();
-                record(toolName, effectiveInput, msg, null, McpCallStatus.FAILED, start);
-                bridgeToCodingTerminal(toolName, effectiveInput, msg);
-                return msg;
+
+        // 权限审批
+        if (permissionManager != null) {
+            String toolUseId = UUID.randomUUID().toString();
+            String paramPreview = toolInput.length() > 120
+                    ? toolInput.substring(0, 120) + "..."
+                    : toolInput;
+            boolean allowed = permissionManager.requestApproval(toolUseId, toolName, toolInput, paramPreview);
+            if (!allowed) {
+                String err = "MCP 工具[" + toolName + "]调用被拒绝";
+                record(toolName, toolInput, null, err, McpCallStatus.FAILED, start);
+                return err + "\nexit code: 1";
             }
         }
+
         try {
-            String out = execWithInput(effectiveInput, toolInput, toolContext);
+            String out = toolContext != null
+                    ? delegate.call(toolInput, toolContext)
+                    : delegate.call(toolInput);
             McpCallStatus status = classifyOutcome(out);
-            record(toolName, effectiveInput, out, null, status, start);
-            bridgeToCodingTerminal(toolName, effectiveInput, out);
+            record(toolName, toolInput, out, null, status, start);
+            bridgeToCodingTerminal(toolName, toolInput, out);
             return out;
         } catch (Exception e) {
-            record(toolName, effectiveInput, null, e.getMessage(), McpCallStatus.FAILED, start);
             String err = "MCP 工具[" + toolName + "]调用失败: " + e.getMessage() + "\nexit code: 1";
-            bridgeToCodingTerminal(toolName, effectiveInput, err);
+            record(toolName, toolInput, null, e.getMessage(), McpCallStatus.FAILED, start);
+            bridgeToCodingTerminal(toolName, toolInput, err);
             return err;
         }
     }
 
-    private String enrichShellInput(String toolName, String toolInput) {
-        if (shellArgumentEnricher == null) {
-            return toolInput;
-        }
-        return shellArgumentEnricher.enrich(toolName, toolInput);
-    }
-
-    private String execWithInput(String effectiveInput, String originalInput, ToolContext toolContext) {
-        if (effectiveInput.equals(originalInput)) {
-            if (toolContext != null) {
-                return delegate.call(originalInput, toolContext);
-            }
-            return delegate.call(originalInput);
-        }
-        if (toolContext != null) {
-            return delegate.call(effectiveInput, toolContext);
-        }
-        return delegate.call(effectiveInput);
-    }
-
     private static McpCallStatus classifyOutcome(String output) {
-        if (output == null) {
-            return McpCallStatus.FAILED;
-        }
+        if (output == null) return McpCallStatus.FAILED;
         String lower = output.toLowerCase();
-        if (lower.contains("exit code: 1") || lower.contains("调用失败") || lower.contains("iserror")) {
+        if (lower.contains("exit code: 1") || lower.contains("iserror")) {
             return McpCallStatus.FAILED;
         }
         return McpCallStatus.SUCCESS;
@@ -140,9 +114,7 @@ public class RecordingToolCallback implements ToolCallback {
 
     private void record(String toolName, String arguments, String result,
                         String errorMessage, McpCallStatus status, long startMillis) {
-        if (!recordCalls || recorder == null) {
-            return;
-        }
+        if (!recordCalls || recorder == null) return;
         McpToolCall call = McpToolCall.builder()
                 .serverId(serverId)
                 .toolName(toolName)

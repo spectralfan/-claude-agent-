@@ -1,7 +1,13 @@
-// EventBridge: JSON-RPC notifications -> React state
-
 import { rpcClient } from './rpc-client';
 import type { ChatMessageVO } from '../api/api';
+
+export type PermissionRequest = {
+  toolUseId: string;
+  toolName: string;
+  paramPreview: string;
+  sessionId: string;
+  ts: string;
+};
 
 export type EventCallback = {
   onMessage?: (msg: ChatMessageVO) => void;
@@ -10,6 +16,7 @@ export type EventCallback = {
   onStepStarted?: (data: any) => void;
   onToolCalled?: (data: any) => void;
   onToolResult?: (data: any) => void;
+  onPermissionRequested?: (data: PermissionRequest) => void;
   onError?: (err: string) => void;
 };
 
@@ -26,6 +33,7 @@ class EventBridge {
       'event.step.started',
       'event.tool.called',
       'event.tool.result',
+      'event.permission.requested',
     ];
     this.bound.forEach((m) => rpcClient.on(m, this.handle));
   }
@@ -44,6 +52,7 @@ class EventBridge {
       case 'event.step.started': cb.onStepStarted?.(msg.params); break;
       case 'event.tool.called': cb.onToolCalled?.(msg.params); break;
       case 'event.tool.result': cb.onToolResult?.(msg.params); break;
+      case 'event.permission.requested': cb.onPermissionRequested?.(msg.params); break;
     }
   };
 

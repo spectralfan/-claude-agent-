@@ -49,7 +49,9 @@ export type SseMessageType =
   | "CODING_SUBTASK_STARTED"
   | "CODING_SUBTASK_COMPLETED"
   | "CODING_SUBTASK_FAILED"
-  | "CODING_STACK_DETECTED";
+  | "CODING_STACK_DETECTED"
+  | "SUBAGENT_STARTED"
+  | "SUBAGENT_FINISHED";
 
 export interface SseMessagePayload {
   message: ChatMessageVO;

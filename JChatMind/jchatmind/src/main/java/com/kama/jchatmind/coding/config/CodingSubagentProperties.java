@@ -9,9 +9,6 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "coding.subagent")
 public class CodingSubagentProperties {
 
-    private boolean enabled = true;
-    /** 子 Agent 使用的 worker 预设名（按 agent.name 查找，默认 Claude Code Coding Agent） */
-    private String workerAgentName = "Claude Code Coding Agent";
     private int maxLoopSteps = 35;
     /** 子任务结束（成功/失败）后自动唤醒 Orchestrator 继续编排 */
     private boolean autoContinue = true;

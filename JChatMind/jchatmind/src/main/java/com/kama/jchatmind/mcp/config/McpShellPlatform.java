@@ -26,13 +26,13 @@ public final class McpShellPlatform {
 
     public static String resolvedExecutor(McpProperties.Shell shell) {
         if (shell == null) {
-            return isHostWindows() ? "powershell" : "sh";
+            return isHostWindows() ? "bash" : "sh";
         }
         String e = shell.getExecutor() == null ? "auto" : shell.getExecutor().trim().toLowerCase();
         if (!"auto".equals(e)) {
             return e;
         }
-        return useWindowsShell(shell) ? "powershell" : "sh";
+        return useWindowsShell(shell) ? "bash" : "sh";
     }
 
     public static String envPlatform(McpProperties.Shell shell) {

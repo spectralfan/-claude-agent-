@@ -9,7 +9,8 @@
       ],
       "env": {
         "JCHATMIND_MCP_PLATFORM": "windows",
-        "JCHATMIND_MCP_EXECUTOR": "powershell",
+        "JCHATMIND_MCP_EXECUTOR": "bash",
+        "JCHATMIND_BASH_PATH": "Z:\\Git\\bin\\bash.exe",
         "JCHATMIND_PREVIEW_PORT": "5500",
         "JCHATMIND_RESERVED_PORTS": "8080,3000,5173"
       }

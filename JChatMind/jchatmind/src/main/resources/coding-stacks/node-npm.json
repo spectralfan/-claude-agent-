@@ -5,10 +5,10 @@
   "detectFiles": ["package.json"],
   "scaffoldTemplate": "node-npm",
   "skillId": "node-autonomous-dev",
-  "suggestedMcpTools": ["run_terminal_cmd"],
+  "suggestedMcpTools": ["execute_command"],
   "verifyWorkflow": "list_stack_verify_commands → run_stack_verify(\"npm test\")；独立 .js 用 check_js_syntax；HTML 用 verify_coding_file",
   "doneCriteria": "npm test exit 0",
-  "suggestedAgentTools": ["coding_file_tools", "coding_verify_tools", "run_terminal_cmd"],
+  "suggestedAgentTools": ["execute_command"],
   "verifyCommands": [
     { "label": "npm test", "type": "shell", "command": "npm test" }
   ]

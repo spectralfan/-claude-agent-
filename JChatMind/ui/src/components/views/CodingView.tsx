@@ -32,7 +32,6 @@ import {
   getCodingWorkspaces,
   getCodingStacks,
   getCodingAgentPreset,
-  getCodingOrchestratorPreset,
   getChatSession,
   getCodingTask,
   getCodingTaskSummary,
@@ -61,7 +60,7 @@ import CodingTerminalPanel, {
   type TerminalLogEntry,
 } from "../coding/CodingTerminalPanel.tsx";
 import CodingCompletionCard from "../coding/CodingCompletionCard.tsx";
-import CodingSubtaskPanel from "../coding/CodingSubtaskPanel.tsx";
+// CodingSubtaskPanel removed
 import CodingWorkspaceLayout from "../coding/CodingWorkspaceLayout.tsx";
 import { useSessionSse } from "../../hooks/useSessionSse.ts";
 
@@ -175,11 +174,7 @@ const CodingView: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const loader =
-      agentRole === "orchestrator"
-        ? getCodingOrchestratorPreset
-        : getCodingAgentPreset;
-    loader()
+    getCodingAgentPreset()
       .then((preset) => {
         if (preset?.agentId) {
           setAgentId(preset.agentId);
@@ -837,10 +832,10 @@ const CodingView: React.FC = () => {
                 直接对话 · 技术栈自动识别 · 可用 @文件 引用
               </Text>
             </div>
-            <CodingSubtaskPanel
+            {/* <CodingSubtaskPanel
               sessionId={sessionId}
               refreshToken={subtaskRefreshToken}
-            />
+            */}
             {taskSummary && task?.status === "COMPLETED" && (
               <CodingCompletionCard
                 summary={taskSummary}

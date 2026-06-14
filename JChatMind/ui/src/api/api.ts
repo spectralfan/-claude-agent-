@@ -437,9 +437,6 @@ export async function getCodingAgentPreset(): Promise<CodingAgentPresetVO | null
   return data;
 }
 
-export async function getCodingOrchestratorPreset(): Promise<CodingAgentPresetVO | null> {
-  return get<CodingAgentPresetVO | null>("/coding/agents/orchestrator-preset");
-}
 
 export interface WorkspaceDetectResultVO {
   stackId?: string;
@@ -613,13 +610,6 @@ export interface CodingSubtaskVO {
   finishedAt?: string;
 }
 
-export async function getCodingSubtasks(
-  sessionId: string,
-): Promise<CodingSubtaskVO[]> {
-  return get<CodingSubtaskVO[]>(
-    `/coding/tasks/session/${sessionId}/subtasks`,
-  );
-}
 
 export interface CodingRuntimeStatusVO {
   mcpEnabled: boolean;

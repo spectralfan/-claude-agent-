@@ -142,10 +142,22 @@ const AgentChatView: React.FC = () => {
         setDisplayAgentStatus(true);
         setAgentStatusText(message.payload.statusText);
         setAgentStatusType("AI_OBSERVING");
+      } else if (message.type === "SUBAGENT_STARTED") {
+        setDisplayAgentStatus(true);
+        setAgentStatusType("AI_EXECUTING");
+        setAgentStatusText("委派子 Agent: " + (message.payload.description || ""));
+        setActiveSubAgents(
+          (message.payload as any)._activeSubAgents || []
+        );
+      } else if (message.type === "SUBAGENT_FINISHED") {
+        setActiveSubAgents(
+          (message.payload as any)._activeSubAgents || []
+        );
       } else if (message.type === "AI_DONE") {
         setDisplayAgentStatus(false);
         setAgentStatusText("");
         setAgentStatusType(undefined);
+        setActiveSubAgents([]);
         getChatMessages().catch(() => undefined);
       }
     },
@@ -173,6 +185,7 @@ const AgentChatView: React.FC = () => {
         displayAgentStatus={displayAgentStatus}
         agentStatusText={agentStatusText}
         agentStatusType={agentStatusType}
+        activeSubAgents={activeSubAgents}
       />
       <div className="border-t border-gray-200 p-4 bg-white">
         <AgentChatInput onSend={handleSendMessage} />

@@ -140,6 +140,8 @@ coding:
         path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/workspace/python-uv-e2e
       - name: 跳跳乐 MCP E2E
         path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/workspace/jump-game-e2e
+      - name: test workspace
+        path: Z:\JAVA_workshop\JChatMindv2\JChatMind\jchatmind\workspace\test-workspace
       # - name: 我的业务项目
       #   path: D:/projects/order-service
   agent:
@@ -167,16 +169,6 @@ coding:
     enabled: true
   reviewer-preset:
     enabled: true
-  orchestration:
-    max-depth: 1
-    max-concurrency: 4
-    auto-review: true
-    auto-review-depends: true
-    dispatch-interval-ms: 2000
-    read-max-bytes: 524288
-    shell-output-max-chars: 65536
-    list-dir-default-depth: 2
-    list-dir-max-depth: 5
   subagent:
     enabled: true
     worker-agent-name: Claude Code Coding Agent

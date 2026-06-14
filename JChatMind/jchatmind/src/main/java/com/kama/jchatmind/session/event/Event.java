@@ -15,7 +15,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
     @JsonSubTypes.Type(value = PermissionRequestedEvent.class, name = "permission.requested"),
     @JsonSubTypes.Type(value = PermissionGrantedEvent.class, name = "permission.granted"),
     @JsonSubTypes.Type(value = PermissionDeniedEvent.class, name = "permission.denied"),
-    @JsonSubTypes.Type(value = ContextCompactedEvent.class, name = "context.compacted")
+    @JsonSubTypes.Type(value = ContextCompactedEvent.class, name = "context.compacted"),
+    @JsonSubTypes.Type(value = SubagentStartedEvent.class, name = "subagent.started"),
+    @JsonSubTypes.Type(value = SubagentFinishedEvent.class, name = "subagent.finished")
 })
 public abstract class Event {
     public abstract String getType();

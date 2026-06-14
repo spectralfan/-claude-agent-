@@ -6,6 +6,7 @@ import Content from '../layout/Content.tsx';
 import AgentChatView from './views/AgentChatView.tsx';
 import KnowledgeBaseView from './views/KnowledgeBaseView.tsx';
 import CodingView from './views/CodingView.tsx';
+import PermissionDialog from './PermissionDialog.tsx';
 
 export default function JChatMindLayout() {
   return (
@@ -24,6 +25,7 @@ export default function JChatMindLayout() {
           <Route path='/' element={<AgentChatView />} />
         </Routes>
       </Content>
+      <PermissionDialog />
     </Layout>
   );
 }

@@ -1,6 +1,5 @@
 package com.kama.jchatmind.coding.controller;
 
-import com.kama.jchatmind.agent.tools.coding.CodingRunTool;
 import com.kama.jchatmind.coding.model.dto.*;
 import com.kama.jchatmind.coding.model.entity.CodingTask;
 import com.kama.jchatmind.coding.service.CodingApprovalService;
@@ -25,7 +24,6 @@ public class CodingController {
 
     private final CodingTaskService codingTaskService;
     private final CodingApprovalService codingApprovalService;
-    private final CodingRunTool codingRunTool;
     private final CodingWorkspaceService codingWorkspaceService;
     private final RealtimeNotifier realtimeNotifier;
     private final CodingCommandService codingCommandService;
@@ -54,13 +52,6 @@ public class CodingController {
                     .build());
         }
         return ApiResponse.success(task);
-    }
-
-    @PostMapping("/{taskId}/run-maven")
-    public ApiResponse<String> runMaven(@PathVariable String taskId, @RequestBody RunMavenApiRequest request) {
-        return ApiResponse.success(codingRunTool.runMavenForTask(
-                taskId, request.getGoal(), request.getTestPattern(), request.getSessionId(), request.getAgentId()
-        ));
     }
 
     @PostMapping("/{taskId}/run-shell")

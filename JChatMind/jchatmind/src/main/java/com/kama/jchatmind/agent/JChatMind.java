@@ -1,6 +1,7 @@
 package com.kama.jchatmind.agent;
 
 import com.kama.jchatmind.converter.ChatMessageConverter;
+import com.kama.jchatmind.session.event.EventBus;
 import com.kama.jchatmind.message.SseMessage;
 import com.kama.jchatmind.model.dto.ChatMessageDTO;
 import com.kama.jchatmind.model.dto.KnowledgeBaseDTO;
@@ -21,9 +22,6 @@ import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
-import com.kama.jchatmind.coding.context.SchedulerRunContext;
-import com.kama.jchatmind.mcp.bridge.AliasAwareToolCallbackResolver;
-import com.kama.jchatmind.mcp.bridge.McpToolAliasRegistry;
 import com.kama.jchatmind.mcp.bridge.McpToolBridge;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -117,6 +115,7 @@ public class JChatMind {
                      List<KnowledgeBaseDTO> availableKbs,
                      String chatSessionId,
                      ChatEventPublisher chatEventPublisher,
+                     EventBus eventBus,
                      ChatMessageFacadeService chatMessageFacadeService,
                      ChatMessageConverter chatMessageConverter,
                      McpToolBridge mcpToolBridge
@@ -166,9 +165,8 @@ public class JChatMind {
                 .build();
 
         // 展开 MCP 别名并统一解析（精确名 / 别名 / 连接前缀），避免 run_terminal_cmd 等名称找不到回调
-        this.availableTools = McpToolAliasRegistry.expandAliases(availableTools);
+        this.availableTools = new java.util.ArrayList<>(availableTools);
         this.toolCallingManager = ToolCallingManager.builder()
-                .toolCallbackResolver(new AliasAwareToolCallbackResolver(this.availableTools, mcpToolBridge))
                 .build();
     }
 
@@ -449,8 +447,12 @@ public class JChatMind {
             toolExecutionResult = toolCallingManager.executeToolCalls(prompt, this.lastChatResponse);
         } catch (Exception e) {
             if (isToolArgumentParseFailure(e)) {
-                log.warn("工具参数 JSON 解析失败，已转为可恢复提示供 Agent 重试: {}", e.getMessage());
+                log.warn("工具参数 JSON 解析失败...", e.getMessage());
                 return recoverFromToolArgumentParseFailure(e);
+            }
+            if (isUnknownToolCallError(e)) {
+                log.warn("LLM called unknown tool, recovering: {}", e.getMessage());
+                return recoverFromUnknownToolCall(e);
             }
             throw e;
         }
@@ -516,6 +518,47 @@ public class JChatMind {
         }
         return false;
     }
+
+    private static boolean isUnknownToolCallError(Throwable e) {
+        Throwable t = e;
+        while (t != null) {
+            String msg = t.getMessage();
+            if (msg != null && msg.contains("No ToolCallback found for tool name")) {
+                return true;
+            }
+            t = t.getCause();
+        }
+        return false;
+    }
+
+    private ToolResponseMessage recoverFromUnknownToolCall(Throwable e) {
+        AssistantMessage output = this.lastChatResponse.getResult().getOutput();
+        String toolNames = this.availableTools.stream()
+                .map(tc -> tc.getToolDefinition().name())
+                .collect(Collectors.joining(", "));
+        String hint = "\u5DE5\u5177\u4E0D\u5B58\u5728\uFF0C\u8BF7\u4ECE\u53EF\u7528\u5DE5\u5177\u4E2D\u9009\u62E9\uFF1A" + toolNames
+                + "\u3002\u8BF7\u4E0D\u8981\u8C03\u7528\u4E0D\u5B58\u5728\u7684\u5DE5\u5177\uFF0C\u5305\u62EC coding_file_tools \u7B49\u5DF2\u79FB\u9664\u7684\u65E7\u5DE5\u5177\u3002";
+
+        List<ToolResponseMessage.ToolResponse> responses = output.getToolCalls().stream()
+                .map(tc -> new ToolResponseMessage.ToolResponse(tc.id(), tc.name(), hint))
+                .toList();
+        ToolResponseMessage toolResponseMessage = ToolResponseMessage.builder()
+                .responses(responses)
+                .build();
+
+        List<Message> history = new ArrayList<>(this.chatMemory.get(this.chatSessionId));
+        history.add(output);
+        history.add(toolResponseMessage);
+        this.chatMemory.clear(this.chatSessionId);
+        this.chatMemory.add(this.chatSessionId, history);
+
+        saveMessage(output);
+        saveMessage(toolResponseMessage);
+        refreshPendingMessages();
+        return toolResponseMessage;
+    }
+
+
 
     private static String rootCauseMessage(Throwable e) {
         Throwable root = e;
@@ -610,10 +653,6 @@ public class JChatMind {
             throw new IllegalStateException("Agent is not idle");
         }
 
-        boolean schedulerRun = this.schedulerMode;
-        if (schedulerRun) {
-            SchedulerRunContext.begin();
-        }
         try {
             this.agentState = AgentState.PLANNING;
             emitAgentPhase(SseMessage.Type.AI_PLANNING, "分析任务并规划执行步骤");
@@ -631,9 +670,6 @@ public class JChatMind {
             log.error("Error running agent", e);
             throw new RuntimeException(formatAgentFailureMessage(e), e);
         } finally {
-            if (schedulerRun) {
-                SchedulerRunContext.clear();
-            }
             emitAgentPhase(SseMessage.Type.AI_DONE,
                     agentState == AgentState.ERROR ? "执行出错" : "处理完成");
         }

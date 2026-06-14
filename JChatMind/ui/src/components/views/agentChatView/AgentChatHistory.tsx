@@ -141,6 +141,36 @@ const ToolResponseDisplay: React.FC<{ toolResponse: ToolResponse }> = ({
               </div>
             )}
           </div>
+          {/* Sub-agent progress cards */}
+          {activeSubAgents.length > 0 && (
+            <div className="mt-2 space-y-1 pl-4 border-l-2 border-blue-200">
+              {activeSubAgents.map((sa) => (
+                <div key={sa.runId} className="bg-blue-50 rounded p-2 text-sm">
+                  <div className="flex items-center gap-1">
+                    <span className="animate-spin text-blue-500">⚙</span>
+                    <span className="font-medium text-blue-700">
+                      {sa.description}
+                    </span>
+                    {sa.steps > 0 && (
+                      <span className="text-gray-400 text-xs ml-1">
+                        step {sa.steps}
+                      </span>
+                    )}
+                  </div>
+                  {sa.currentTool && (
+                    <div className="text-gray-500 text-xs mt-0.5 ml-4">
+                      ├─ {sa.currentTool}
+                    </div>
+                  )}
+                  {sa.lastObserve && (
+                    <div className="text-gray-400 text-xs ml-4 truncate">
+                      └─ {sa.lastObserve}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -153,6 +183,7 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   agentStatusText = "",
   agentStatusType,
   compact = false,
+  activeSubAgents = [],
 }) => {
   // 滚动容器引用
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -341,6 +372,36 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
               placement="start"
             />
           </div>
+          {/* Sub-agent progress cards */}
+          {activeSubAgents.length > 0 && (
+            <div className="mt-2 space-y-1 pl-4 border-l-2 border-blue-200">
+              {activeSubAgents.map((sa) => (
+                <div key={sa.runId} className="bg-blue-50 rounded p-2 text-sm">
+                  <div className="flex items-center gap-1">
+                    <span className="animate-spin text-blue-500">⚙</span>
+                    <span className="font-medium text-blue-700">
+                      {sa.description}
+                    </span>
+                    {sa.steps > 0 && (
+                      <span className="text-gray-400 text-xs ml-1">
+                        step {sa.steps}
+                      </span>
+                    )}
+                  </div>
+                  {sa.currentTool && (
+                    <div className="text-gray-500 text-xs mt-0.5 ml-4">
+                      ├─ {sa.currentTool}
+                    </div>
+                  )}
+                  {sa.lastObserve && (
+                    <div className="text-gray-400 text-xs ml-4 truncate">
+                      └─ {sa.lastObserve}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

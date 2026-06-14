@@ -2,13 +2,12 @@ package com.kama.jchatmind.agent.tools;
 
 import org.springframework.stereotype.Component;
 
-// 注释 @Component 注解，暂不将 DirectAnswerTool 注册为 Spring Bean
-// @Component
+@Component
 public class DirectAnswerTool implements Tool {
 
     @Override
     public String getName() {
-        return "directAnswer";
+        return "direct_answer";
     }
 
     @Override
@@ -22,7 +21,7 @@ public class DirectAnswerTool implements Tool {
     }
 
     @org.springframework.ai.tool.annotation.Tool(
-            name = "directAnswer",
+            name = "direct_answer",
             description = "用于直接回答用户问题，适用于无需生成任务计划或调用其他工具的场景。"
     )
     public void directAnswer() {}

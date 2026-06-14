@@ -5,10 +5,10 @@
   "detectFiles": ["pom.xml"],
   "scaffoldTemplate": "java-maven",
   "skillId": "java-autonomous-dev",
-  "suggestedMcpTools": ["run_terminal_cmd", "bash"],
+  "suggestedMcpTools": ["execute_command"],
   "verifyWorkflow": "list_stack_verify_commands → run_stack_verify(\"mvn compile\") 再 run_stack_verify(\"mvn test\")；失败则读输出修复",
   "doneCriteria": "mvn compile 与 mvn test 均 exit 0",
-  "suggestedAgentTools": ["coding_file_tools", "coding_verify_tools", "run_terminal_cmd", "maven_command"],
+  "suggestedAgentTools": ["execute_command"],
   "verifyCommands": [
     { "label": "mvn compile", "type": "maven", "goal": "compile" },
     { "label": "mvn test", "type": "maven", "goal": "test" }

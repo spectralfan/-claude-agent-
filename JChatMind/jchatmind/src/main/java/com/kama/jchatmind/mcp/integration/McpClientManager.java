@@ -2,9 +2,8 @@ package com.kama.jchatmind.mcp.integration;
 
 import com.kama.jchatmind.coding.bridge.CodingMcpOutputBridge;
 import com.kama.jchatmind.mcp.bridge.McpCallRecorder;
-import com.kama.jchatmind.mcp.bridge.McpShellArgumentEnricher;
-import com.kama.jchatmind.mcp.bridge.McpShellCommandPolicy;
 import com.kama.jchatmind.mcp.bridge.RecordingToolCallback;
+import com.kama.jchatmind.mcp.permission.PermissionManager;
 import com.kama.jchatmind.mcp.config.McpProperties;
 import io.modelcontextprotocol.client.McpSyncClient;
 import jakarta.annotation.PostConstruct;
@@ -14,7 +13,6 @@ import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -28,19 +26,16 @@ public class McpClientManager {
     private final McpProperties properties;
     private final McpCallRecorder recorder;
     private final CodingMcpOutputBridge codingMcpOutputBridge;
-    private final McpShellArgumentEnricher shellArgumentEnricher;
-    private final McpShellCommandPolicy shellCommandPolicy;
+    private final PermissionManager permissionManager;
     private final List<ToolCallback> cachedCallbacks = new CopyOnWriteArrayList<>();
 
     public McpClientManager(List<McpSyncClient> clients, McpProperties props,
-                            McpCallRecorder rec, CodingMcpOutputBridge bridge,
-                            McpShellArgumentEnricher enricher, McpShellCommandPolicy policy) {
+                            McpCallRecorder rec, CodingMcpOutputBridge bridge, PermissionManager pm) {
         this.mcpSyncClients = clients != null ? clients : List.of();
         this.properties = props;
         this.recorder = rec;
         this.codingMcpOutputBridge = bridge;
-        this.shellArgumentEnricher = enricher;
-        this.shellCommandPolicy = policy;
+        this.permissionManager = pm;
     }
 
     @PostConstruct
@@ -60,8 +55,7 @@ public class McpClientManager {
                         Arrays.stream(callbacks).map(c -> c.getToolDefinition().name()).toList());
                 for (ToolCallback cb : callbacks) {
                     cachedCallbacks.add(new RecordingToolCallback(cb, serverId, recorder,
-                            properties.isRecordCalls(), codingMcpOutputBridge,
-                            shellArgumentEnricher, shellCommandPolicy));
+                            properties.isRecordCalls(), codingMcpOutputBridge, permissionManager));
                 }
             } catch (Exception e) {
                 log.warn("MCP client[{}] discovery failed: {}", serverId, e.getMessage());

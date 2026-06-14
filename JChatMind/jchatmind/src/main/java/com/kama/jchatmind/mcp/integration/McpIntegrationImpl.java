@@ -1,6 +1,5 @@
 package com.kama.jchatmind.mcp.integration;
 
-import com.kama.jchatmind.mcp.bridge.McpToolAliasRegistry;
 import com.kama.jchatmind.mcp.bridge.McpToolBridge;
 import com.kama.jchatmind.mcp.config.McpProperties;
 import com.kama.jchatmind.mcp.mapper.McpToolCallMapper;
@@ -31,7 +30,7 @@ public class McpIntegrationImpl implements McpIntegration {
     private final McpToolCallMapper callMapper;
 
     public static boolean isTerminalToolName(String name) {
-        return McpToolAliasRegistry.isTerminalToolName(name);
+        return "execute_command".equals(name);
     }
 
     @Override
@@ -40,7 +39,7 @@ public class McpIntegrationImpl implements McpIntegration {
             return List.of();
         }
         Set<String> allowed = new HashSet<>(allowedToolNames);
-        boolean wantsTerminal = allowed.stream().anyMatch(McpToolAliasRegistry::isTerminalToolName);
+        boolean wantsTerminal = allowed.contains("execute_command");
 
         List<ToolCallback> result = new ArrayList<>();
         Set<String> registeredNames = new HashSet<>();
@@ -70,7 +69,7 @@ public class McpIntegrationImpl implements McpIntegration {
     }
 
     private boolean isShellMcpTool(String name) {
-        return McpToolAliasRegistry.resolveCanonicalName(name) != null;
+        return "execute_command".equals(name);
     }
 
     /**

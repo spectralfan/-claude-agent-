@@ -49,3 +49,9 @@ workspace/style.css
 **/cp.txt
 # Graphify backup snapshots
 graphify-out/2026-*/
+
+# Workspace test files
+workspace/
+_write_*
+gen.py
+index.html

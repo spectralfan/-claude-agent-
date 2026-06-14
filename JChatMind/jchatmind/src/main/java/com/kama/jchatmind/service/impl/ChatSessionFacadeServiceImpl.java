@@ -28,7 +28,8 @@ import java.util.List;
 @AllArgsConstructor
 public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
 
-    private static final String TOOL_SCHEDULER = "orchestration_task_tools";
+    private static final String TOOL_SCHEDULER = "write_coding_file";
+    private static final String TOOL_SPAWN_AGENT = "spawn_agent";
 
     private final ChatSessionMapper chatSessionMapper;
     private final ChatSessionConverter chatSessionConverter;
@@ -88,6 +89,22 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
                     request.getTitle() != null ? request.getTitle() : "新会话",
                     type
             );
+            // Store workspaceRoot in session metadata for CodingSessionBinding
+            if (request.getWorkspaceRoot() != null && !request.getWorkspaceRoot().isBlank()) {
+                try {
+                    var metaMap = new java.util.LinkedHashMap<String, Object>();
+                    metaMap.put("workspaceRoot", request.getWorkspaceRoot());
+                    metaMap.put("workspacePath",
+                        request.getWorkspacePath() != null ? request.getWorkspacePath() : ".");
+                    var coding = java.util.Map.of("coding", metaMap);
+                    String metaJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(coding);
+                    var existing = chatSessionMapper.selectById(sid);
+                    if (existing != null) {
+                        existing.setMetadata(metaJson);
+                        chatSessionMapper.updateById(existing);
+                    }
+                } catch (Exception ignored) {}
+            }
             return CreateChatSessionResponse.builder().chatSessionId(sid).build();} catch (Exception e) {
             throw new BizException("创建聊天会话失败: " + e.getMessage());
         }
@@ -123,7 +140,7 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
     /**
      * 自动检测 session type：
      * 1. 请求已指定 type → 使用该 type
-     * 2. Agent 包含 orchestration_task_tools → CODING
+     * 2. Agent 包含 coding_file_tools → CODING
      * 3. 其他 → CHAT
      */
     private String resolveSessionType(CreateChatSessionRequest request) {
@@ -136,7 +153,7 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
                 try {
                     List<String> tools = objectMapper.readValue(agent.getAllowedTools(),
                             new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
-                    if (tools.contains(TOOL_SCHEDULER)) {
+                    if (tools.contains(TOOL_SCHEDULER) || tools.contains(TOOL_SPAWN_AGENT)) {
                         return "CODING";
                     }
                 } catch (Exception ignored) {}

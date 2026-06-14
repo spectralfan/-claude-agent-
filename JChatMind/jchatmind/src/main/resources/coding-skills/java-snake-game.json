@@ -3,5 +3,5 @@
   "name": "Java 贪吃蛇",
   "description": "在空 Maven 工程中实现 Swing 贪吃蛇 + 单元测试",
   "prompt": "任务：实现完整可玩的 Java Swing 贪吃蛇游戏。\n\n交付物：\n- 包名 com.example.snake\n- SnakeGame.java（main 入口）\n- GamePanel.java（游戏逻辑与渲染）\n- Direction.java\n- SnakeGameTest.java（JUnit5，覆盖方向/得分/碰撞等核心逻辑）\n\n流程：创建 pom.xml（如不存在）→ 实现类 → compile → test → 根据报错修复直到 test 通过。\nUI：640x480 窗口，键盘方向键控制。",
-  "suggestedTools": ["coding_file_tools", "maven_command"]
+  "suggestedTools": ["execute_command", "write_coding_file", "read_coding_file", "list_coding_directory_tree"]
 }

@@ -2,7 +2,6 @@ package com.kama.jchatmind.coding.service.impl;
 
 import com.kama.jchatmind.coding.CodingAgentRoles;
 import com.kama.jchatmind.coding.config.CodingProperties;
-import com.kama.jchatmind.coding.config.OrchestrationProperties;
 import com.kama.jchatmind.model.dto.AgentDTO;
 import com.kama.jchatmind.coding.model.dto.CodingStackDTO;
 import com.kama.jchatmind.coding.model.dto.CodingTaskMetadata;
@@ -31,7 +30,6 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
     private final CodingSkillService codingSkillService;
     private final CodingStackService codingStackService;
     private final CodingWorkspaceService codingWorkspaceService;
-    private final OrchestrationProperties orchestrationProperties;
 
     @Override
     public String composeSystemPrompt(String basePrompt, String taskSessionId, AgentDTO agentConfig) {
@@ -86,7 +84,7 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
         }
         StringBuilder sb = new StringBuilder("\n## 上下文文件\n");
         Path base = codingWorkspaceService.resolveForTask(task);
-        int maxBytes = orchestrationProperties.getReadMaxBytes();
+        int maxBytes = 65536;
         for (String rel : contextFiles) {
             if (rel == null || rel.isBlank()) {
                 continue;
@@ -211,14 +209,14 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
         String agentTools = stack != null && stack.getSuggestedAgentTools() != null
                 && !stack.getSuggestedAgentTools().isEmpty()
                 ? String.join(", ", stack.getSuggestedAgentTools())
-                : "coding_file_tools, coding_search_tools, coding_verify_tools, " + mcpTools;
+                : "read_coding_file, write_coding_file, list_coding_directory_tree, " + mcpTools;
 
         String mavenFallback = stack != null && "java".equalsIgnoreCase(stack.getLanguage())
-                ? "\n7. 若无 MCP 终端工具，可降级使用 maven_command（compile/test）"
+                ? "\n7. 若无 MCP 终端工具，可降级使用 execute_command 执行 mvn compile/test"
                 : "";
 
         String pythonUvHint = stack != null && "python".equalsIgnoreCase(stack.getLanguage())
-                ? "\n7. Python 依赖用 **uv**：uv sync / uv add / uv run pytest；勿用 pip；MCP 命令单行、无 bash 重定向（禁 &&、2>&1、|）；可设 workingDir 为工作区根"
+                ? "\n7. Python 依赖用 **uv**：uv sync / uv add / uv run pytest；勿用 pip；MCP 使用 bash 语法（ls, cat, find, grep）；可设 workingDir 为工作区根"
                 : "";
 
         int previewPort = codingProperties.getWorkspace().getPreviewPort();
@@ -238,7 +236,7 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
                 - 推荐工具: %s
 
                 ## 自主开发协议
-                1. 使用 coding_file_tools 读写文件；**探索目录用 list_coding_directory_tree(maxDepth=2~5)**，勿逐层 list_coding_directory；**多读文件用 read_coding_files** 一次批量读取
+                1. 使用 read_coding_file / write_coding_file 读写文件；探索目录用 list_coding_directory_tree(maxDepth=2~5)；多读文件用 read_coding_files 一次批量读取
                 2. 同一推理轮可并行发起多个 tool_calls（如列目录树 + 批量读 pom.xml 与主类），减少循环次数
                 3. 大 HTML/JS **禁止单次 write 整文件**（易 JSON 截断），先写骨架再 append_coding_file / apply_coding_patch 分块
                 4. coding_search_tools 搜索/局部 patch
