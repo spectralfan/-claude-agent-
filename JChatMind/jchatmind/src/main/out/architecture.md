@@ -1,883 +1,175 @@
-# JChatMind 软件架构文档
+# JChatMindv2 项目架构文档
 
-> 版本：2026-06-14（ToolRegistry + Git Bash + spawn_agent + 移除编排系统）  
-> 代码根目录：`JChatMind/jchatmind`（后端）、`JChatMind/ui`（前端）  
-> 架构查询：优先使用 Graphify 知识图谱（`graphify-out/graph.json` + `user-graphify` MCP）
+> 基于实际代码扫描生成 · 2026-06-15
 
 ---
 
-## 1. 系统定位
+## 1. 项目概述
 
-JChatMind 是基于 **Spring Boot 3.5.x** + **Spring AI 1.1.x** 的多智能体对话与 AI 编程平台，核心能力包括：
-
-| 能力 | 说明 | 默认开关 |
-|------|------|----------|
-| 多 Agent 对话 | 可配置模型、系统提示词、可选工具 | 常开 |
-| Agent 工具闭环 | 推理 → 工具调用 → 结果观察 → 继续推理 | 常开 |
-| 知识库 RAG | 文档上传、分块、向量检索 | 常开 |
-| Memory Hub | 分层记忆（WORKING / RECENT / ARCHIVE） | `memory.hub.enabled=true` |
-| MCP 工具 | Git Bash 执行器：bash 语法原生支持，Node.js fs 处理 heredoc 写文件 | `mcp.enabled=true` |
-| 结构化验证 | `coding_verify_tools` 白名单验证，不经 MCP 拼复杂 shell | Agent 预设已勾选 |
-| AI Coding | 仿 Claude Code 的工作台：文件树、预览/Diff、对话、终端、栈感知验证 | 常开（需创建 Coding 任务） |
-| spawn_agent 子 Agent | KamaClaude 风格子 Agent 委派：通过 ToolRegistry 创建 Worker/Reviewer/Planner 子 Agent | 主 Agent 自动获取 |
+JChatMindv2 是一个 AI 编程 Agent 平台，采用 KamaClaude 风格的 plan→act→observe 循环。
+后端 Java 17 + Spring Boot 3 + Spring AI 1.1 + PostgreSQL 16 + MyBatis。
+前端 React + TypeScript + Vite + Ant Design X。
+MCP 通过 STDIO 直连 Git Bash 执行外壳命令。
 
 ---
 
-## 2. 仓库与部署视图
+## 2. 核心模块
 
-```
-JChatMindv2/
-├── pom.xml                          # 聚合 POM（IDEA 多模块）
-├── JChatMind/
-│   ├── jchatmind/                   # Spring Boot 后端 (:8080)
-│   │   └── src/main/
-│   │       ├── java/com/kama/jchatmind/
-│   │       ├── resources/
-│   │       │   ├── application.yaml
-│   │       │   ├── mapper/          # MyBatis XML
-│   │       │   └── coding-skills/   # Skill JSON
-│   │       └── out/                 # 架构文档（本目录）
-│   └── ui/                          # React + Vite 前端 (:5173 dev)
-│       └── src/
-├── graphify-out/                    # Graphify 代码知识图谱（AST + 语义，本地生成；见 §19）
-│   ├── graph.json                   # 3414 节点 / 6566 links（commit bdbb64d）
-│   ├── manifest.json                # 434 源文件索引
-│   ├── .graphify_analysis.json      # 277 社区聚类
-│   └── cache/                       # ast/ + semantic/ 增量子图缓存
-└── workspace/                       # Coding 默认沙箱（可配置）
-```
+### 2.1 Agent 系统 (`agent/`)
 
-**运行时依赖**
-
-- PostgreSQL（`jchatmind` 库，可选 pgvector）
-- LLM：DeepSeek / 智谱 GLM（`application.yaml` 配置）
-- 可选：Ollama（Memory Hub 向量 `bge-m3`）
-- MCP：`mcp.proxy.auto-start=true` 时后端自动拉起 mcp-proxy（`:3000`）；开发期推荐 `spring.profiles.active=dev`
-
----
-
-## 3. 技术栈
-
-| 层级 | 技术 |
-|------|------|
-| 后端框架 | Spring Boot 3.5.8、Spring AI 1.1.0 |
-| 持久化 | PostgreSQL、MyBatis、JSONB、pgvector |
-| 异步 | `@EnableAsync`、`@EnableScheduling`（`AsyncConfig`） |
-| 实时推送 | `ChatEventPublisher`（local 直推 SSE / rocketmq 经 MQ 桥接 SSE） |
-| 前端 | React 19、Vite、Ant Design 6、@ant-design/x、Tailwind 4、React Router 7 |
-
----
-
-## 4. 逻辑架构总览
-
-```mermaid
-flowchart TB
-  subgraph Frontend["前端 ui/"]
-    AgentView[AgentChatView]
-    KBView[KnowledgeBaseView]
-    CodingView[CodingView 三栏工作台]
-  end
-
-  subgraph API["REST / SSE"]
-    REST["/api/*"]
-    SSE["/sse/connect/{sessionId}"]
-  end
-
-  subgraph Core["核心域 service + controller"]
-    Facade[Facade Services]
-    ChatEvt[ChatEvent → ChatEventListener]
-  end
-
-  subgraph AgentLayer["Agent 层"]
-    Factory[JChatMindFactory]
-    Composer[CodingPromptComposer]
-    Mind[JChatMind Agent Loop]
-    SubExec[CodingSubtaskExecutor]
-  end
-
-  subgraph Vertical["垂直模块"]
-    Memory[Memory Hub]
-    MCP[MCP Bridge + Proxy Bootstrap]
-    Verify[CodingVerifyTools]
-    Coding[Coding 模块]
-  end
-
-  subgraph Graphify["架构知识（离线）"]
-    KG[graphify-out 知识图谱]
-  end
-
-  subgraph Data["PostgreSQL"]
-    CoreTables[agent / chat_* / kb / document]
-    MemTables[t_memory_*]
-    McpTables[t_mcp_tool_call]
-    CodTables[t_coding_task]
-  end
-
-  Frontend --> REST
-  Frontend --> SSE
-  REST --> Facade
-  Facade --> ChatEvt
-  ChatEvt --> Factory --> Mind
-  Factory --> Composer
-  Factory --> Memory
-  Factory --> MCP
-  Factory --> Verify
-  Factory --> Coding
-  KG -.->|query_graph| AgentLayer
-  SubExec -.->|@Lazy| Factory
-  Mind --> SSE
-  Facade --> Data
-  Vertical --> Data
-```
-
----
-
-## 5. 后端包结构
-
-`com.kama.jchatmind` 共 14 个顶层包：
-
-| 包 | 职责 |
+| 类 | 职责 |
 |----|------|
-| `agent` | `JChatMind` 运行时、`JChatMindFactory`、内置 `Tool` |
-| `controller` | 核心 REST：Agent、会话、消息、知识库、文档、工具、SSE |
-| `service` | Facade 门面（CRUD、RAG、SSE、邮件） |
-| `model` | entity / dto / vo / request / response |
-| `mapper` | 核心域 MyBatis |
-| `converter` | Entity ↔ DTO ↔ VO |
-| `event` | `ChatEvent` + `ChatEventListener` |
-| `message` | `SseMessage` 协议 |
-| `config` | ChatClient、CORS、Async |
-| `memory` | Memory Hub 全模块 |
-| `mcp` | MCP 桥接、Proxy 启动（`bootstrap`）、Shell 策略（`bridge`）、调用埋点 |
-| `realtime` | `ChatEventPublisher`（local / RocketMQ） |
-| `coding` | AI Coding 任务、工作区、Skill、编排续跑、子任务执行 |
-| `exception` | `GlobalExceptionHandler` |
-| `typehandler` | `StringListTypeHandler`、`PgVectorTypeHandler` |
-
----
-
-## 6. 核心请求生命周期（对话）
-
-```mermaid
-sequenceDiagram
-  participant UI as 前端
-  participant API as ChatMessageController
-  participant Facade as ChatMessageFacadeService
-  participant DB as PostgreSQL
-  participant Listener as ChatEventListener
-  participant Factory as JChatMindFactory
-  participant Agent as JChatMind
-  participant SSE as RealtimeNotifier
-
-  UI->>API: POST /api/chat-messages
-  API->>Facade: createChatMessage
-  Facade->>DB: 持久化 user 消息
-  Facade->>Listener: publish ChatEvent
-  Listener->>Listener: CodingSessionContext.set
-  Listener->>Listener: CodingMessageEnricher（@file 展开）
-  Listener->>Factory: create(agentId, sessionId, enrichedInput)
-  Factory->>Factory: 加载记忆 / 工具 / MCP / 规则 / Skill
-  Listener->>Agent: run()
-  loop Agent Loop（最多 maxSteps）
-    Agent->>SSE: AI_PLANNING / THINKING / EXECUTING / OBSERVING
-    Agent->>Agent: reason → act → observe
-    Agent->>DB: 持久化 assistant / tool 消息
-    Agent->>SSE: AI_GENERATED_CONTENT
-  end
-  Agent->>SSE: AI_DONE
-  UI->>SSE: EventSource 订阅实时事件
-```
-
-**要点**
-
-1. 用户消息先入库，再异步触发 Agent（`ChatEventListener` `@Async`）。
-2. Agent **不**使用 Spring AI 内置自动工具执行（`internalToolExecutionEnabled=false`），由 `JChatMind` 手动控制工具顺序与持久化。
-3. 前端通过 **同一会话** 的 SSE 连接接收 AI 与 Coding 事件。
-
----
-
-## 7. Agent 层
-
-### 7.1 JChatMind — Agent 闭环
-
-旧称 Think–Execute，现实现为显式四阶段（Claude Code / ReAct 风格）：
-
-| 阶段 | 方法 | AgentState | SSE |
-|------|------|------------|-----|
-| 规划 | `run()` 入口 | `PLANNING` | `AI_PLANNING` |
-| 推理 | `reason()` | `THINKING` | `AI_THINKING` |
-| 工具调用 | `act()` | `EXECUTING` | `AI_EXECUTING` |
-| 结果观察 | `observe()` | `OBSERVING` | `AI_OBSERVING` |
-| 结束 | `run()` finally | `FINISHED` / `ERROR` | `AI_DONE` |
-
-单轮 `loopStep()`：**推理 →（若有 tool_calls）工具调用 → 观察 → 下一轮推理**，直到：
-
-- 模型返回无 tool_calls 的最终回复，或
-- 达到 `maxSteps`（普通对话默认 20，Coding 任务默认 `coding.agent.max-loop-steps`，当前 **100**），或
-- 调用 `terminate` 工具。
-
-**工具参数容错**：`act()` 在 JSON 解析失败时可恢复，引导 Agent 分步写入（避免大 HTML 单次 `write_coding_file` 触发截断）。
-
-**消息窗口**
-
-- `AgentDTO.ChatOptions.messageLength`：Agent 默认条数窗口（默认 10）。
-- `coding.agent.memory-window`（默认 80）：Coding 任务活跃或子 Agent 时，与 `messageLength` 取 `max` 作为实际窗口。
-- `ToolAwareMessageWindowChatMemory`：按 **tool 调用轮次**（assistant+tool_calls + 连续 tool 响应）整轮淘汰，钉住 system + 首条 user；`coding.agent.tool-aware-memory: true` 启用（false 回退 `MessageWindowChatMemory`）。
-- `sanitizeMessagesForToolCallingApi()`：最后一道防线，清理仍不完整的 tool 链，避免 OpenAI/DeepSeek 400。
-- 带 `tool_calls` 的 assistant 必须在对应 tool 消息持久化 **之后** 才推送前端。
-
-### 7.2 JChatMindFactory — 装配
-
-创建 Agent 时按顺序注入：
-
-1. **Agent 配置**（DB `agent` 表 → `AgentDTO`）
-2. **记忆**（Memory Hub 优先，否则 `chat_message` 最近 N 条）
-3. **知识库列表**（`allowedKbs` → 供推理 prompt 引用；**活跃 Coding 任务时为空**）
-4. **本地工具**（`ToolFacadeService` FIXED + `allowedTools` OPTIONAL）
-5. **MCP 工具**（`mcp.enabled=true` 时按白名单追加）
-6. **System Prompt 增强**（有 Coding 任务时，委托 `CodingPromptComposer`）：
-   - 任务工作区 **项目规则**（`JCHATMIND.md` / `CLAUDE.md` / `AGENTS.md`）
-   - **Skill** 指令（`coding-skills/*.json` 或栈默认 skillId）
-   - **Coding 自主开发协议**（栈 Profile、推荐工具、验证/交付说明）
-7. **Coding 步数**：活动任务存在时 `maxSteps = coding.agent.max-loop-steps`（默认 **100**）
-8. **消息窗口**：Coding/子 Agent 使用 `max(messageLength, memory-window)` + `ToolAwareMessageWindowChatMemory`
-9. **Memory 补充**：普通聊天由 `supplemental-enabled` 控制；**Coding 活跃任务**由 `coding-supplemental-enabled` 注入 RECENT/ARCHIVE（同会话恢复长期记忆）；Coding 时剔除 `KnowledgeTool`
-10. **工具结果压缩**：`ToolResultCompactor` 在 `loadChatMessageHistory` 中对较早 tool round 按策略压缩（`STATUS_ONLY` / `HEAD_TAIL` / `MAX_CHARS`）；最近 `agent.tool-result.preserve-recent-rounds` 轮保持完整；DB 与 API 仍返回全文，Memory Hub 镜像使用压缩摘要
-11. **批量工具**：Worker 提供 `list_coding_directory_tree`（递归列目录）、`read_coding_files`（批量读文件）；`JChatMind.act()` 已支持单轮多个 `tool_calls` 并行执行；Prompt 引导合并独立操作为一轮
-
-**循环依赖说明**：`CodingSubtaskExecutorImpl` 通过 `@Lazy JChatMindFactory` 注入，避免与 `ToolFacade → DelegateCodingTaskTool` 形成启动死锁；`spring.main.allow-circular-references: true` 作为兜底。
-
-### 7.3 AgentState
-
-```
-IDLE → PLANNING → THINKING ⇄ EXECUTING → OBSERVING → … → FINISHED / ERROR
-```
-
----
-
-
-## 7.4 会话存储与消息持久化
-
-JChatMindv2 实现了 KamaClaude 风格的 Session/Thread/Notes 三层记忆体系，通过文件系统提供高性能消息存储：
-
-```mermaid
-flowchart LR
-  subgraph Session["会话存储层"]
-    Manager[SessionManager]
-    Meta[MetaStore: meta.json]
-    Thread[ThreadStore: thread.jsonl]
-    Notes[NoteStore: notes.jsonl]
-  end
-  
-  subgraph DB["持久化索引层"]
-    ChatSession[(chat_session)]
-    ChatMessage[(chat_message)]
-  end
-
-  Agent[Agent Loop] -->|saveMessage| Thread
-  Agent -->|持久化| ChatMessage
-  Manager --> Meta
-  Thread -->|异步刷新| ChatMessage
-```
-
-| 组件 | 存储方式 | 功能 |
-|------|---------|------|
-| **ThreadStore** | `{sessionRoot}/{sessionId}/thread.jsonl` | 消息流权威源，JSONL 格式，支持 append/batch/compact(带备份)、裁切 orphan tool_use |
-| **NoteStore** | `{sessionRoot}/{sessionId}/notes.jsonl` | 按 run 追加 notes |
-| **MetaStore** | `{sessionRoot}/{sessionId}/meta.json` | 会话元数据 JSON |
-| **SessionManager** | 文件 + DB | 会话 CRUD、状态管理(activate/pause/complete/fail)、Run 管理 |
-
-**设计原则**：thread.jsonl 是消息的唯一权威源，DB 仅作为索引。消息先写文件（~0.5ms），再异步批量同步到 PostgreSQL。这就是 KamaClaude 风格的"文件优先、DB 索引"策略。
-
-### 7.5 Memory Hub 分层记忆
-
-Memory Hub 提供三层记忆体系，在 chat_message 主链路之外注入智能补充上下文：
-
-| 层级 | 存储位置 | 用途 |
-|------|---------|------|
-| **WORKING** | chat_message 表 + thread.jsonl | 当前会话的完整消息历史 |
-| **RECENT** | t_memory_entry | 同会话早期轮次的压缩摘要 |
-| **ARCHIVE** | t_memory_embedding + pgvector | 跨会话向量检索 |
-
-注入时机：`JChatMindFactory.loadMemory()` → `MemoryIntegration.buildSupplementalContext()`。
-
-### 7.6 CHAT/CODING 会话分离与性能优化
-
-| 优化项 | 说明 |
-|--------|------|
-| **Session Type** | chat_session 区分 `CHAT` / `CODING` 类型，`ChatEventListener` 对 CHAT 跳过 `ensureActiveTask`（避免创建 coding task） |
-| **Agent 缓存** | `@Cacheable("agents")` 缓存 `loadAgent()`，减少 1 DB 查询/消息 |
-| **工具过滤** | `isCodingWorkspaceTool()` 对非 coding 会话过滤掉 bash/shell/maven_command 等 coding 工具 |
-| **编码修复** | JChatMindFactory.java UTF-8 编码修复（中文字符串损坏恢复） |
-## 8. 工具系统
-
-### 8.1 本地 Tool 架构
-
-```
-Tool (interface)
-  ├── ToolType.FIXED    → 所有 Agent 强制拥有（如 TerminateTool）
-  └── ToolType.OPTIONAL → 由 Agent.allowedTools 勾选
-```
-
-| 工具名 | 类 | 用途 |
-|--------|-----|------|
-| `knowledge` | `KnowledgeTools` | RAG 检索 |
-| `email` | `EmailTools` | 发邮件 |
-| `filesystem` | `FileSystemTools` | 通用文件（非 Coding 沙箱） |
-| `database` | `DataBaseTools` | SQL 查询 |
-| `direct_answer` | `DirectAnswerTool` | 直接回答 |
-| `terminate` | `TerminateTool` | 结束 Agent 循环 |
-| `coding_file_tools` | `CodingFileTools` | 读/写/列目录；含 `append_coding_file` 分块追加；写文件 invalidate 验证 |
-| `coding_search_tools` | `CodingSearchTools` | 工作区内 grep + 局部 patch |
-| `coding_verify_tools` | `CodingVerifyTools` | 结构化验证：`check_js_syntax` / `verify_coding_file` / `run_allowed_verify` |
-| `maven_command` | `CodingRunTool` | Maven 白名单命令 |
-| `mark_coding_complete` | `CodingCompleteTool` | 验证通过后标记交付 |
-| `orchestration_task_tools` | `OrchestrationTaskTools` | Scheduler：create/update/list/get DAG 任务 |
-| `orchestration_read_tools` | `OrchestrationReadTools` | Scheduler/Reviewer：只读 `read_workspace_file`（512KB）/ `list_workspace_dir` |
-| `orchestration_shell_tools` | `OrchestrationShellTools` | Worker：`run_workspace_shell`（64KB 输出） |
-| `delegate_coding_task` | `DelegateCodingTaskTool` | 兼容层：等价 `create_orchestration_task(WORKER)` |
-| `coding_subtask_tools` | `CodingSubtaskQueryTool` | 兼容：查询/列出子任务（委托 DB 层） |
-| `weather` / `date` / `city` | test 包 | 示例工具（OPTIONAL） |
-
-**注册方式**：`@Component` + `@Tool` 注解；`JChatMindFactory` 通过 `MethodToolCallbackProvider` 转为 `ToolCallback`。
-
-### 8.2 MCP 工具与 Shell 执行链
-
-```mermaid
-flowchart LR
-  Agent[JChatMind act] --> Record[RecordingToolCallback]
-  Record --> Policy[McpShellCommandPolicy]
-  Policy --> Enrich[McpShellArgumentEnricher]
-  Enrich --> MCP[jchatmind-shell-mcp.mjs]
-  MCP --> Runner[command-runner.mjs v2.3.1]
-  Runner --> PS[PowerShell / cmd]
-  Verify[CodingVerifyTools] -.->|优先| Agent
-```
-
-**三层防护**（根治 MCP 命令误用）：
-
-| 层 | 组件 | 作用 |
-|----|------|------|
-| Java 白名单 | `CodingVerifyTools` | 验证不经 MCP 自由 shell；Agent 预设优先调用 |
-| 策略门禁 | `McpShellCommandPolicy` | 拦截 `node -e`、HTML 路径 `node --check`、cmd 管道等 |
-| 参数改写 | `McpShellArgumentEnricher` | 绝对路径相对化、HTML→`dir` 等 |
-| 执行器 | `command-runner.mjs` | PowerShell 执行、命令改写、`rewriteNodeCheck`、smoke 自检 |
-
-**连接与桥接**
-
-- **Proxy 启动**：`McpProxyApplicationContextInitializer`（`spring.factories` 提前启动）→ `McpProxyRuntime` → `npx mcp-proxy :3000`
-- **健康检查**：`McpShellHealthService` 跑 `command-runner.smoke.mjs`；`GET /api/coding/mcp-health`
-- **客户端**：Spring AI `McpSyncClient` → `spring.ai.mcp.client.sse.connections.proxy`
-- **桥接**：`McpToolBridgeImpl` + `AliasAwareToolCallbackResolver`（`execute_command` ↔ `run_terminal_cmd`）
-- **埋点**：`RecordingToolCallback` 接线策略门禁后异步写入 `t_mcp_tool_call`
-- **输出桥接**：`CodingMcpOutputBridge` → `CODING_COMMAND_OUTPUT` + 验证记录
-- **容错**：MCP 连接失败或工具为空时静默跳过，不影响主流程
-
-**开发配置**：`application-dev.yaml` 设 `mcp.proxy.stop-on-shutdown: false`，避免 DevTools 热重启杀 proxy / 占 8080。
-
----
-
-## 9. Memory Hub（opt-in）
-
-**配置前缀**：`memory.hub.*`（默认 `enabled=true`）
-
-### 9.1 分层模型
-
-| 层级 | 类型 | 策略 |
-|------|------|------|
-| WORKING | 短期 | 滑动窗口，镜像 chat_message |
-| RECENT | 中期 | 重要性评分 Top-N |
-| ARCHIVE | 长期 | 摘要 + 向量检索（pgvector + bge-m3） |
-
-### 9.2 与 Agent 集成
-
-- **写路径**：`ChatMessageFacadeServiceImpl.mirrorToMemoryHub()` 将 user/assistant/tool 镜像到 WORKING 层
-- **读路径**：`chat_message` 保留完整 tool 链；`buildSupplementalContext()` 注入 RECENT/ARCHIVE（普通聊天看 `supplemental-enabled`；Coding 活跃任务看 `coding-supplemental-enabled`）
-- **会话结束**：`MemoryIntegration.onSessionEnd()` → 层级调整 + `MemoryAgent` 异步整理
-- **向量**：Ollama `bge-m3`（`memory.hub.ollama-base-url`）
-- 诊断：`GET /api/memory/status`、`GET /api/memory/stats/{sessionId}`
-
-### 9.3 主要表
-
-`t_memory_entry`、`t_memory_embedding`、`t_memory_context`、`t_memory_session`、`t_memory_task`、`t_memory_stats`
-
----
-
-## 10. AI Coding 模块
-
-> 详细设计见同目录 [`Phase3_架构设计.md`](Phase3_架构设计.md)
-
-### 10.1 产品形态
-
-仿 **Claude Code** 的三栏工作台（`CodingView`）：
-
-```
-┌──────────┬─────────────────┬──────────────┐
-│ 文件树   │ 预览 / Diff     │ Agent 对话   │
-│          │                 │ + 子任务面板 │
-├──────────┴─────────────────┴──────────────┤
-│ 终端 + 栈感知验证条 + Maven 审批条        │
-└───────────────────────────────────────────┘
-```
-
-**三角色编排模式**
-
-| 角色 | 预设 | 工具 | 深度 |
-|------|------|------|------|
-| **Scheduler** | Claude Code Scheduler（原 Orchestrator） | `orchestration_task_tools` + `orchestration_read_tools` | 0（父会话） |
-| **Worker** | Claude Code Coding Agent | 写文件 + 验证 + MCP + `run_workspace_shell` | 1 |
-| **Reviewer** | Claude Code Reviewer | 只读 `orchestration_read_tools` | 1 |
-
-单任务仍可直接选用 **Worker** 预设（不经 Scheduler）。
-
-### 10.2 后端子模块
+| `JChatMind` | Agent 运行时：reason→act→observe 循环，最大 step 限制 |
+| `JChatMindFactory` | Agent 工厂：组装 systemPrompt、工具、记忆、Profile 子 Agent |
+| `AgentState` | Agent 状态枚举（RUNNING / FINISHED / ERROR） |
+| `AgentToolResultProperties` | 工具结果压缩配置 |
+
+**Tool 注册（`agent/tools/`）：**
+
+| 工具 | 类 | 说明 |
+|------|-----|------|
+| `spawn_agent` / `agent_result` | `SpawnAgentTool` | 子 Agent 委派（前台阻塞/后台并行），深度限制 1 层 |
+| `write_coding_file` / `append_coding_file` | `WriteFileTool` | 写入/追加文件（工作区边界检查） |
+| `read_coding_file` | `ReadFileTool` | 读取文件 |
+| `read_coding_files` | `BatchReadTool` | 批量读取 |
+| `list_coding_directory_tree` / `list_coding_directory` | `ListDirTool` | 目录列出 |
+| `direct_answer` | `DirectAnswerTool` | 直接回答用户 |
+| `terminate` | `TerminateTool` | 结束任务 |
+| `save_note` | `NoteSaveTool` | 保存笔记 |
+| `databaseQuery` | `DataBaseTools` | 数据库只读查询 |
+| `knowledge_search` | `KnowledgeTools` | 知识库检索 |
+| `ToolRegistry` | — | 统一工具注册，按 Agent Profile / Session 过滤 |
+
+**Agent Profile（`agent/profile/`）：**
+- `AgentProfile` — YAML 驱动的角色定义（name、systemPrompt、allowedTools、maxSteps）
+- `AgentProfileLoader` — 启动时从 `agent-profiles/*.yaml` 加载
+- `AgentProfileService` — 运行时查询 Profile
+
+**配置目录 `src/main/resources/agent-profiles/`：**
+- `planner.yaml` — 规划者（只读）
+- `worker.yaml` — 执行者（读写+执行）
+- `reviewer.yaml` — 审查者（只读）
+- `scheduler.yaml` — 调度者（保留，暂未使用）
+
+### 2.2 MCP 集成 (`mcp/`)
+
+| 类 | 职责 |
+|----|------|
+| `McpClientManager` | STDIO 直连 MCP 客户端管理，启动时发现工具 |
+| `McpIntegrationImpl` | MCP 工具注入 Agent，白名单过滤 |
+| `McpToolBridgeImpl` | MCP 工具回调桥接 |
+| `RecordingToolCallback` | 工具调用包装：记录埋点 + 权限审批拦截 |
+| `McpCallRecorder` | MCP 调用异步记录到 `t_mcp_tool_call` 表 |
+| `McpShellCommandPolicy` | 外壳命令安全策略（硬拒 `rm -rf`/`shutdown` 等） |
+
+**权限系统（`mcp/permission/`）：**
+
+| 类 | 职责 |
+|----|------|
+| `PermissionManager` | ask/auto 双模式，deny→allow→ask 三层策略 |
+| `PermissionController` | REST API：`GET/PUT /api/mcp/permission/mode`、`POST /api/mcp/permission/respond` |
+
+**MCP Shell Server（`scripts/mcp/jchatmind-shell-mcp.mjs`）：**
+- v3.0.0 — 纯 bash 执行，无 PowerShell 依赖
+- 反斜杠路径自动转正斜杠
+- 64KB 输出截断，120s 超时
+
+### 2.3 事件系统 (`session/event/` + `rpc/`)
+
+| 类 | 职责 |
+|----|------|
+| `EventBus` | 内存事件总线（pub/sub） |
+| `RpcEventBridge` | EventBus → WebSocket 桥接，订阅所有事件推送到前端 |
+| `ChatWebSocketHandler` | WebSocket 连接管理 |
+| `JsonRpcDispatcher` | JSON-RPC 消息路由 |
+
+**事件类型（全部通过 WebSocket 推送）：**
+
+| 事件 | 说明 |
+|------|------|
+| `run.started` / `run.finished` | Agent 运行生命周期 |
+| `step.started` / `step.finished` | 每步循环 |
+| `tool.called` / `tool.result` | 工具调用 |
+| `subagent.started` / `subagent.finished` | 子 Agent 生命周期 |
+| `permission.requested` | 工具审批请求 |
+| `llm.usage` | LLM token 用量 |
+| `context.compacted` | 上下文压缩 |
+
+### 2.4 Coding 系统 (`coding/`)
+
+| 模块 | 职责 |
+|------|------|
+| `CodingTaskService` | 编码任务 CRUD，工作区路径管理 |
+| `CodingTaskAutoProvisionerImpl` | 会话启动时自动创建 Coding 任务 |
+| `CodingWorkspaceServiceImpl` | 工作区根路径管理、边界安全检查 |
+| `CodingPromptComposerImpl` | 系统 Prompt 组装（仅注入 task 上下文，不加工作流指令） |
+| `CodingSessionContext` | ThreadLocal 绑定的 Session/Agent 上下文 |
+| `SubAgentRunContext` | 子 Agent 运行边界标记（防止嵌套） |
+| `AgentPresetBootstrapService` | 启动时确保 AI Coding 预设 Agent 存在 |
+| `CodingStackServiceImpl` | 技术栈配置加载（`coding-stacks/*.json`） |
+| `CodingSkillServiceImpl` | 自主开发技能加载（`coding-skills/*.json`） |
+
+### 2.5 Session 管理 (`session/`)
 
 | 组件 | 说明 |
 |------|------|
-| `CodingTaskService` | 任务生命周期；Maven 后保持 `RUNNING` 以支持多轮修复 |
-| `CodingWorkspaceService` | 工作区白名单、路径安全、文件树/读文件 API |
-| `CodingPromptComposer` | 组装 Coding System Prompt（规则 + Skill + 栈协议） |
-| `CodingFileTools` | Agent 侧文件工具；写文件推送 `CODING_FILE_CHANGED` 并 invalidate 验证 |
-| `CodingSearchTools` | `search_coding_files` / `apply_coding_patch` |
-| `CodingRunTool` | Maven 白名单 + 审批策略 |
-| `CodingCommandService` | Maven / Shell 沙箱执行；成功时 `recordSuccess` |
-| `CodingVerificationService` | 交付前验证记录（内存）；改文件 invalidate |
-| `CodingApprovalPolicy` | `strict` / `development` / `trusted` |
-| `CodingSkillService` / `CodingStackService` | Skill JSON + Stack Profile（含 `verifyCommands`） |
-| `WorkspaceDetectService` / `WorkspaceScaffoldService` | 工程检测 + 空目录脚手架 |
-| `CodingMcpOutputBridge` | MCP shell 工具输出 → `CODING_COMMAND_OUTPUT` + 验证记录 |
-| `CodingCompleteTool` | `mark_coding_complete`；可选校验 `requireVerification` |
-| `CodingChangeRegistry` | 会话内变更文件追踪（交付摘要） |
-| `OrchestrationTaskService` | `t_orchestration_task`：DAG 校验、状态机、依赖解锁 |
-| `OrchestrationTaskDispatcher` | READY 队列 + `max-concurrency` 并行调度 + Worker 完成自动插 Reviewer |
-| `OrchestrationTaskExecutor` | 按 role 调用 `JChatMindFactory.createRoleAgent`（零父历史 prompt） |
-| `CodingSubtaskService` | 兼容接口，委托 `OrchestrationTaskService` |
-| `OrchestratorContinuationService` | 编排图全部终态后自动续跑 Scheduler |
-| `CodingAgentRoles` | 区分 Scheduler / Worker / Reviewer 与 `filterToolsByRole` |
-| `CodingVerifyTools` | 结构化验证（不经 MCP 拼 shell） |
-| `AgentPresetBootstrapService` | 启动时引导 Coding/Orchestrator Agent 预设 |
-| `ProjectRulesService` | 从**任务工作区**读规则文件 |
-| `CodingMessageEnricher` | 解析 `@path`，注入 `<file>` 内容 |
-| `CodingSessionContext` | ThreadLocal 绑定 sessionId/agentId |
-| `RealtimeNotifier` | SSE 推送统一入口 `tryPublish()` |
-| `SandboxCommandRunner` | 通用进程执行（超时、输出截断） |
+| `SessionManagerImpl` | 会话创建（CHAT/CODING 类型） |
+| `ThreadStore` | thread.jsonl 文件存储（持久化对话） |
+| `NoteStore` | notes.md 文件存储 |
+| `MetaStore` | meta.json 文件存储 |
+| `AgentLoop` | 独立 Agent 循环（子 Agent 用） |
+| `SubAgentExecutor` | 子 Agent 异步执行器 |
+| `ContextCompactor` | 上下文自动压缩（token 超阈值时触发） |
 
-### 10.3 Coding 任务状态
+### 2.6 记忆系统 (`memory/`)
 
-```
-PENDING → RUNNING ⇄ WAITING_APPROVAL
-                ↘ TIMEOUT / REJECTED
-```
+| 模块 | 说明 |
+|------|------|
+| `MemoryAgent` | 记忆整理 Agent（会话结束时触发） |
+| `MemoryIntegrationImpl` | 记忆注入 Agent 上下文 |
+| `MemoryServiceImpl` | 记忆 CRUD |
+| `RecentMemoryServiceImpl` | 近期记忆管理 |
+| `ArchiveMemoryServiceImpl` | 归档记忆管理 |
+| `WorkingMemoryServiceImpl` | 工作记忆管理 |
 
-Maven 执行成功/失败后 **不再** 将任务置为 `COMPLETED`（避免 Agent 会话中断）。
-
-### 10.4 表
-
-`t_coding_task`（含 `workspace_root`、`metadata` JSONB 存 stackId/skillId/language/approvalMode）
-
-### 10.5 MCP 与多语言验证
-
-- 命令执行 **优先 MCP**（`run_terminal_cmd` / `bash`），栈 Profile 定义 `verifyWorkflow` 与 `verifyCommands`
-- Java 无 MCP 时可降级 `maven_command`；前端/REST 可手动 `run-maven` 或 `run-shell`
-- 交付验证：`coding.delivery.require-verification`（当前默认 **false**）；为 true 时 `mark_coding_complete` 前须 exit 0 记录
-- 推荐验证路径：**优先 `coding_verify_tools`** → MCP 简单命令 → `maven_command` / UI `run-shell`
-- 纯静态 HTML/JS：用 `append_coding_file` 分块写入 + `check_js_syntax`；避免单次 write 整文件导致 JSON 截断
-- MCP 默认已开：`spring.ai.mcp.client.enabled=true` + `mcp.enabled=true`；Agent 预设已含 MCP 终端别名
-
----
-
-## 11. 知识库与 RAG
+### 2.7 前端 (`ui/`)
 
 | 组件 | 说明 |
 |------|------|
-| `KnowledgeBaseFacadeService` | 知识库 CRUD |
-| `DocumentFacadeService` | 文档 CRUD + 上传 |
-| `DocumentStorageService` | 本地文件 `document.storage.base-path` |
-| `MarkdownParserService` | 文档解析分块 |
-| `RagService` | 向量检索（`ChunkBgeM3` + pgvector） |
-| `KnowledgeTools` | Agent 可调用的检索工具 |
+| `CodingView` | AI Coding 主页面 |
+| `AgentChatView` | Agent 对话页面 |
+| `AgentChatHistory` | 对话历史渲染（含子 Agent 进度卡片） |
+| `CodingChatInput` | 输入框（@文件引用） |
+| `CodingFileTree` | 工作区文件树 |
+| `CodingFilePreview` | 文件预览/差异显示 |
+| `PermissionDialog` | 工具调用审批弹窗 |
+| `event-bridge.ts` | WebSocket 事件桥接 |
+| `useSessionSse.ts` | WebSocket 事件订阅 Hook |
 
 ---
 
-## 12. 数据持久化
-
-### 12.1 核心域表（概念）
-
-| 表 | 实体 | 说明 |
-|----|------|------|
-| `agent` | `Agent` | 智能体配置、allowedTools/Kbs JSON |
-| `chat_session` | `ChatSession` | 会话 |
-| `chat_message` | `ChatMessage` | 消息（含 toolCalls/toolResponse metadata） |
-| `knowledge_base` | `KnowledgeBase` | 知识库 |
-| `document` | `Document` | 文档元数据 |
-| chunk 相关 | `ChunkBgeM3` | 向量分块 |
-
-### 12.2 MyBatis 约定
-
-- UUID 列：`CAST(#{id} AS uuid)`
-- JSONB：`CAST(#{json} AS jsonb)`，Java 侧常用 `String` 承载
-- 数组：`TEXT[]` + `StringListTypeHandler`
-- 向量：`PgVectorTypeHandler`
-
----
-
-## 13. API 与 SSE 协议
-
-### 13.1 REST 概览
-
-**前缀**：`/api`（SSE 除外）
-
-| 模块 | 路径 | 控制器 |
-|------|------|--------|
-| Agent | `/agents` | `AgentController` |
-| 会话 | `/chat-sessions` | `ChatSessionController` |
-| 消息 | `/chat-messages` | `ChatMessageController` |
-| 知识库 | `/knowledge-bases` | `KnowledgeBaseController` |
-| 文档 | `/documents` | `DocumentController` |
-| 工具列表 | `/tools` | `ToolController` |
-| Coding 任务 | `/coding/tasks` | `CodingController` |
-| Coding 子任务/运行时 | `/coding/tasks/session/{id}/subtasks`、`/coding/runtime-status`、`/coding/mcp-health` | `CodingSubtaskController` |
-| Coding 工作区 | `/coding/workspaces` | `CodingWorkspaceController` |
-| Coding Skill / Stack | `/coding/skills`、`/coding/stacks` | `CodingSkillController` 等 |
-| Coding Agent 预设 | `/coding/agents/preset`、`/orchestrator-preset` | `CodingAgentController` |
-
-**SSE**：`GET /sse/connect/{chatSessionId}`（`text/event-stream`）
-
-### 13.2 EventBus 事件总线
-
-JChatMindv2 实现了 KamaClaude 风格的 EventBus 事件系统，与 SSE 消息并行运行：
-
-```mermaid
-flowchart LR
-  subgraph JChatMind["JChatMind (旧路径)"]
-    emit[emitAgentPhase]
-    -->|SseMessage| SSE
-  end
-
-  subgraph AgentLoop["AgentLoop (新路径)"]
-    step[StepStartedEvent]
-    tool[ToolCalledEvent]
-    result[ToolResultEvent]
-    stepf[StepFinishedEvent]
-    step --> EventBus
-    tool --> EventBus
-    result --> EventBus
-    stepf --> EventBus
-  end
-
-  subgraph EventBus["EventBus"]
-    pub[publish]
-    -->|subscribe| RpcEventBridge
-  end
-
-  subgraph WS["WebSocket"]
-    ws[ChatWebSocketHandler]
-    -->|JSON-RPC| frontend[前端]
-  end
-
-  RpcEventBridge --> ws
-  SSE -->|EventSource| frontend
-```
-
-| 组件 | 职责 |
-|------|------|
-| **Event** | 抽象基类，JSON 子类型判别（同 KamaClaude 的 Discriminator） |
-| **EventBus** | 发布/订阅模式，`CopyOnWriteArrayList` 持有订阅者 |
-| **RpcEventBridge** | 监听所有 EventBus 事件 → `JsonRpcMessage` → WebSocket 广播 |
-| **EventWriter** | 将事件写入 `events.jsonl` 文件（可回放） |
-| **ChatEventPublisher** | 旧路径：`SseMessage` → `SseService` → `ChatWebSocketHandler` |
-
-**Event 类型**（11 种）：
-
-| 事件 | type 标识 | 来源 |
-|------|----------|------|
-| `StepStartedEvent` | step.started | AgentLoop / JChatMind |
-| `StepFinishedEvent` | step.finished | AgentLoop / JChatMind |
-| `ToolCalledEvent` | tool.called | AgentLoop / JChatMind |
-| `ToolResultEvent` | tool.result | AgentLoop / JChatMind |
-| `RunStartedEvent` | run.started | AgentLoop / JChatMind |
-| `RunFinishedEvent` | run.finished | AgentLoop / JChatMind |
-| `LlmUsageEvent` | llm.usage | AgentLoop |
-| `PermissionRequestedEvent` | permission.requested | 预留 |
-| `PermissionGrantedEvent` | permission.granted | 预留 |
-| `PermissionDeniedEvent` | permission.denied | 预留 |
-| `ContextCompactedEvent` | context.compacted | ContextCompactor |
-
-**双路径共存**：JChatMind 同时通过 `emitAgentPhase`（旧路径，SseMessage）和 `eventBus.publish`（新路径，Event）发送事件。前端同时支持 EventSource（SSE）和 WebSocket（JSON-RPC）。
-
-### 13.2 SseMessage 类型
-
-| 类型 | 用途 |
-|------|------|
-| `AI_GENERATED_CONTENT` | 新消息（assistant/tool） |
-| `AI_PLANNING` | Agent 规划阶段 |
-| `AI_THINKING` | 推理阶段 |
-| `AI_EXECUTING` | 工具调用阶段 |
-| `AI_OBSERVING` | 观察工具结果 |
-| `AI_DONE` | Agent 本轮结束 |
-| `CODING_STARTED` | Coding 任务创建 |
-| `CODING_APPROVAL_REQUIRED` | Maven 待审批 |
-| `CODING_COMMAND_OUTPUT` | 命令输出 |
-| `CODING_FILE_CHANGED` | 文件变更 + Diff 数据 |
-| `CODING_SCAFFOLD_DONE` | 脚手架初始化完成 |
-| `CODING_SUBTASK_STARTED/COMPLETED/FAILED` | Orchestrator 子任务生命周期 |
-| `CODING_COMPLETED` / `CODING_FAILED` | 任务终态（`mark_coding_complete` 或失败） |
-
----
-
-## 14. 前端架构
-
-### 14.1 路由
-
-| 路径 | 组件 | 功能 |
-|------|------|------|
-| `/`, `/chat`, `/chat/:id` | `AgentChatView` | 普通 Agent 对话 |
-| `/knowledge-base` | `KnowledgeBaseView` | 知识库管理 |
-| `/coding` | `CodingView` | 创建任务向导 |
-| `/coding/:sessionId` | `CodingView` | AI Coding 工作台（恢复会话） |
-
-### 14.2 分层
+## 3. 数据流
 
 ```
-api/http.ts + api.ts + api/sse.ts          → REST / SSE 客户端
-hooks/                                     → useAgents, useSessionSse, …
-components/coding/CodingWorkspaceLayout.tsx → 可拖拽三栏 + localStorage 持久化 + 窄屏 Tab 兜底
-components/views/CodingView.tsx            → 接入布局 + 验证面板 + MCP 状态
-components/coding/                           → FileTree, FilePreview, Terminal, SubtaskPanel, …
-```
-
-### 14.3 实时集成
-
-- `useSessionSse(sessionId, handler)` 统一订阅 `EventSource(/sse/connect/{sessionId})`
-- Vite 开发代理：`/api` → `:8080`，`/sse` → SSE 端点
-- `CodingView` 同时处理 `AI_*` 与 `CODING_*`；子任务 SSE 驱动 `CodingSubtaskPanel` 刷新
-
----
-
-## 15. 配置一览
-
-| 前缀 | 类 | 关键项 |
-|------|-----|--------|
-| `spring.ai.deepseek` / `zhipuai` | — | LLM API Key |
-| `spring.ai.mcp.client` | — | MCP 连接（默认关） |
-| `memory.hub` | `MemoryProperties` | 记忆 Hub 开关与窗口 |
-| `mcp` | `McpProperties` | MCP 注入、Proxy 自动启动、Shell 平台/策略 |
-| `coding` | `CodingProperties` | 工作区、审批、Skill、子 Agent 池、交付验证 |
-| `spring.profiles.active=dev` | `application-dev.yaml` | DevTools 期 `stop-on-shutdown: false` |
-| `document.storage` | — | 文档存储路径 |
-
-**Coding 默认值（Claude Code 友好）**
-
-```yaml
-spring:
-  main:
-    allow-circular-references: true   # 子 Agent 与 Factory 循环依赖兜底
-
-mcp:
-  enabled: true
-  shell:
-    policy-enabled: true
-  proxy:
-    auto-start: true
-
-coding:
-  approval:
-    default-mode: development
-  agent:
-    max-loop-steps: 100
-    memory-window: 80
-  delivery:
-    require-verification: false   # 生产可改 true
-  subagent:
-    enabled: true
-    pool-size: 4
-    auto-continue: true
-
-memory:
-  hub:
-    supplemental-enabled: false
-    coding-supplemental-enabled: true   # Coding 同会话恢复注入 RECENT/ARCHIVE
+用户输入 → POST /chat-messages → ChatEventListener(异步)
+  → JChatMindFactory.create() ─ 组装 systemPrompt + 工具 + 记忆
+  → JChatMind.run() ─ plan→act→observe 循环
+    → LLM.chat() ─ 返回 tool_calls
+    → RecordingToolCallback.invoke()
+      → PermissionManager.requestApproval() ─ ask 模式弹窗 / auto 放行
+      → delegate.call() ─ 执行工具
+    → EventBus.publish(ToolResultEvent) → RpcEventBridge → WebSocket → 前端
+  → SessionManager 保存消息
+  → MemoryAgent 触发记忆整理
 ```
 
 ---
 
-## 16. 扩展指南
+## 4. 关键设计决策
 
-### 16.1 新增本地 Tool
-
-1. 实现 `Tool` 接口，`@Component` 注册
-2. 方法加 `@Tool` / `@ToolParam`
-3. 在 Agent 配置 `allowedTools` 中勾选工具名
-
-### 16.2 新增 Coding Skill
-
-在 `src/main/resources/coding-skills/` 添加 JSON：
-
-```json
-{
-  "id": "my-skill",
-  "name": "显示名",
-  "description": "下拉说明",
-  "prompt": "注入 system prompt 的指令…",
-  "suggestedTools": ["coding_file_tools", "maven_command"]
-}
-```
-
-创建 Coding 任务时选择 `skillId`。
-
-### 16.3 指定其他编程语言
-
-| 层级 | 做法 |
-|------|------|
-| 仅改文件 | Agent 不勾 `maven_command`；Skill/`JCHATMIND.md` 声明语言 |
-| 自动测试闭环 | 需新增语言命令工具（如 `run_command` 白名单：`pytest`、`npm test`） |
-| MCP | 启用 MCP shell/process 工具 + Skill 说明 |
-
-当前 **Maven 闭环仅适用于 Java**；`coding_file_tools` **与语言无关**。
-
-### 16.4 启用 MCP
-
-默认已开启（`mcp.proxy.auto-start: true`）。手动步骤：
-
-1. 确认 `GET /api/coding/mcp-health` 返回 `runnerVersion: 2.3.1`
-2. `spring.ai.mcp.client.enabled=true`、`mcp.enabled=true`
-3. Agent `allowedTools` 含 MCP 别名 + `coding_verify_tools`
-4. 开发期使用 `spring.profiles.active=dev` 避免 DevTools 杀 proxy
-
----
-
-## 17. 设计原则
-
-1. **工具执行可控**：关闭 Spring AI 自动 tool 执行，统一由 `JChatMind` 编排与持久化。
-2. **验证分层**：结构化 `coding_verify_tools` 优先；MCP 仅跑简单命令；Java 侧策略门禁兜底。
-3. **渐进兼容**：Memory Hub 无数据时回退 `chat_message`；MCP 失败时静默跳过。
-4. **安全边界**：工作区白名单 + Maven 白名单 + `McpShellCommandPolicy` + `command-runner` 改写。
-5. **可观测**：SSE 分阶段推送；MCP 调用落库；`GET /api/coding/mcp-health`；Memory Hub 离线评测。
-6. **前后端协议统一**：`SseMessage` 覆盖对话与 Coding（含子任务生命周期）。
-7. **架构可查**：Graphify 图谱（`graphify-out/`）+ MCP `query_graph` 优先于全库 grep。
-
----
-
-## 18. 端到端测试案例（贪吃蛇 HTML/JS）
-
-> 详细步骤与 API 序列见 [`Phase3_架构设计.md` §19](./Phase3_架构设计.md#19-端到端测试案例贪吃蛇-htmljscss)
-
-2026-06-02 在本机验证：**Worker Agent 自主完成 HTML+CSS+JS 贪吃蛇并交付**。
-
-| 项 | 结果 |
-|----|------|
-| 工作区 | `jchatmind/workspace/snake-e2e/` |
-| 产出 | `index.html`、`style.css`、`game.js` |
-| 任务状态 | `COMPLETED`（`mark_coding_complete`） |
-| 耗时 | ~7 分钟 |
-
-**关键路径**：`GET preset` → `POST chat-sessions` → `POST coding/tasks` → `POST chat-messages`（`role` 须为小写 `"user"`）→ Agent 分块写文件 → `coding_verify_tools` / `mark_coding_complete`。
-
-**推荐做法**：大 HTML 用 `append_coding_file`；验证用 `check_js_syntax`；`require-verification` 当前默认 `false`。
-
----
-
-## 19. Graphify 项目知识图谱
-
-离线生成的代码知识图谱，用于架构查询与模块关系分析（**未接入** Agent 运行时 RAG）。
-
-| 路径 | 说明 |
-|------|------|
-| `graphify-out/graph.json` | 主图（**3414** 节点、**6566** 条 `links`、**277** 社区；`built_at_commit: bdbb64d`） |
-| `graphify-out/manifest.json` | 已索引源文件清单（**434** 文件，含 orchestration / `CodingWorkspaceLayout` / `run-backend.ps1` 等） |
-| `graphify-out/.graphify_analysis.json` | 社区聚类与成员列表（`communities` 键 → 节点 ID 数组） |
-| `graphify-out/cache/ast/`、`cache/semantic/` | 单文件 AST / 语义子图缓存（增量更新） |
-
-**图模型**：`graph.json` 为 NetworkX node-link 格式（边字段名为 `links`，非 `edges`）；节点含 `community`、`_origin`（`ast` / `semantic`）、`source_file`。
-
-**代表性社区**（按 `.graphify_analysis.json` 聚类）：
-
-| 社区 ID | 规模（约） | 主题 | 代表节点 |
-|---------|-----------|------|----------|
-| 0 | 99 | Agent Factory + 角色工具过滤 | `JChatMindFactory`、`CodingAgentRoles` |
-| 2 | 75 | 前端 REST 客户端 | `api.ts` |
-| 7 | 59 | 编排事件与 Chat 触发链 | `ChatEvent`、`ApplicationEventPublisher` |
-| 8 | 58 | MCP 命令执行器 | `command-runner.mjs` |
-| 21 / 100 | 29 / 11 | MCP Proxy 启动 | `McpProxyLauncher`、`McpProxyApplicationContextInitializer` |
-| 24 | 28 | 结构化验证 | `CodingVerifyTools` |
-
-**查询方式**（Cursor 已配置 `user-graphify` MCP）：
-
-- `query_graph` — 自然语言 BFS/DFS 子图检索
-- `get_community` / `get_node` / `god_nodes` — 社区、节点、枢纽
-- 改代码后：`graphify update .`（AST-only，无 API 成本；全量语义重建按需加 `--semantic`）
-
-**图谱枢纽**（`links` 度数 Top，2026-06-09）：`api.ts`（112）、`JChatMindFactory`（44）、`CodingWorkspaceService`（43）、`OrchestrationTaskService`（42）、`JChatMind`（39）、`command-runner.mjs`（51）、`CodingView.tsx`（53）、`CodingVerifyTools`（34）。
-
----
-
-## 19.5 与 KamaClaude 架构对比
-
-KamaClaude（[GitHub](https://github.com/youngyangyang04/KamaClaude)）是一个从零实现的本地 Agent 运行时，JChatMindv2 在核心 Agent Loop 设计上与其高度一致。
-
-### 核心架构对比
-
-| 维度 | JChatMindv2 | KamaClaude |
-|------|-------------|------------|
-| 语言 | Java 17 + Spring Boot | Python 3.12+ |
-| 架构 | 单体 Web 应用 (HTTP REST + SSE) | Daemon (TCP) + CLI/TUI 多客户端 |
-| 通信 | HTTP 请求/SSE 推送 | JSON-RPC 2.0 over TCP NDJSON |
-| 状态存储 | PostgreSQL + 文件双写 (thread.jsonl) | 纯文件 (events.jsonl, sessions) |
-| 进程模型 | 多线程 Spring Boot (Tomcat) | 单进程 asyncio |
-| Agent Loop | JChatMind.run() → reason → act → observe | AgentRunner/AgentLoop → 同模式 |
-| MCP | 子进程 MCP server, Spring 集成 | Python MCP client |
-| 工具安全 | ❌ 无权限审批 | ✅ PermissionManager |
-| 上下文治理 | ✅ 窗口裁剪 + 工具结果压缩 | ✅ 水位检测 + budget |
-| 工具审批 | ❌ 无 | ✅ PermissionManager |
-| Skills | ❌ 无 | ✅ Skills 工作流模板 |
-| 测试 | ⚠️ 少量 | ✅ pytest + mypy strict + ruff |
-
-### Agent Loop 对比
-
-```
-JChatMindv2:                        KamaClaude:
-JChatMind.run()                     AgentRunner.run()
-  ├─ loopStep(i)                      ├─ loop_step(i)
-  │  ├─ 1. reason()  ← LLM 推理       │  ├─ 1. reason()  ← LLM 推理
-  │  ├─ 2. act()     ← 执行工具       │  ├─ 2. act()     ← 执行工具
-  │  └─ 3. observe() ← 观察结果       │  └─ 3. observe() ← 观察结果
-  └─ 循环直到 FINISHED                 └─ 循环直到 FINISHED
-```
-
-### 多 Agent 角色对比
-
-| JChatMindv2 | KamaClaude |
-|-------------|-----------|
-| Scheduler (Orchestrator) → 委派任务 | Planner → 拆分任务 |
-| Worker → 写文件、执行命令 | Executor → 写文件、执行命令 |
-| Reviewer → 只读审查 | Reviewer → 只读审查 |
-
-### 相同点
-- **ReAct Agent Loop**：reason → act → observe 闭环完全一致
-- **Scheduler-Worker-Reviewer** 三角色设计理念相同
-- **MCP 扩展**：都支持 MCP 外部工具接入
-- **事件推送**：SSE (JChatMind) / EventBus (KamaClaude)
-- **Session/Thread/Notes**：两套体系设计一致
-- **上下文压缩**：JChatMind 用窗口裁剪 + compact, KamaClaude 用水位检测 + budget
-
-### 差异点（JChatMindv2 优势）
-- 知识库 RAG 检索（KamaClaude 无）
-- Memory Hub 向量记忆 + RECENT/ARCHIVE 分层（KamaClaude 纯文件）
-- Web 管理界面（KamaClaude TUI only）
-- 工业级持久化（KamaClaude 无持久化）
-
-### 差异点（KamaClaude 优势）
-- 工具调用前权限审批（JChatMind 工具裸跑）
-- Skills 工作流模板
-- 完善的测试体系
-- 守护进程 + 多客户端架构
-- 零基建延迟（~5ms vs JChatMind ~100ms+）
-
-## 20. 相关文档
-
-| 文档 | 内容 |
-|------|------|
-| [`Phase3_架构设计.md`](Phase3_架构设计.md) | AI Coding 模块详细设计（API、Orchestrator、交付验证、E2E 流程） |
-| [`Coding_Setup.md`](Coding_Setup.md) | MCP 执行链、结构化验证、RocketMQ、Agent 预设、联调步骤 |
-| `JChatMind/README.md` | 项目概览与快速开始 |
-| `JChatMind/jchatmind/IDEA运行说明.md` | 本地 IDEA 运行指引 |
+1. **纯 bash MCP** — 放弃 PowerShell，所有命令通过 Git Bash 执行
+2. **Profile 驱动 Agent** — planner/worker/reviewer 由 YAML 配置，KamaClaude 风格
+3. **权限审批** — ask/auto 双模式 + 三层策略，ask 模式通过 WebSocket 弹窗用户确认
+4. **无强制工作流** — Agent 自主决策工具使用，不强制 planner→executor→reviewer 流程
+5. **STDIO 直连 MCP** — 删除 SSE Proxy，MCP 子进程直接与 Spring AI 通信
+6. **WebSocket 事件流** — 所有 Agent 状态变化实时推送到前端

@@ -138,9 +138,13 @@ const CodingView: React.FC = () => {
     SseMessageType | undefined
   >(undefined);
   const [chatSending, setChatSending] = useState(false);
+  const [permMode, setPermMode] = useState('ask');
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentStepInfo, setAgentStepInfo] = useState('');
   const [approvalCommand, setApprovalCommand] = useState<string>("");
 
   const [selectedFilePath, setSelectedFilePath] = useState<string>();
+  useEffect(() => { fetch('http://localhost:8080/api/mcp/permission/mode').then(r=>r.json()).then(d=>{if(d.mode)setPermMode(d.mode)}).catch(()=>{}) }, []);
   const [fileDiff, setFileDiff] = useState<FileDiffState | null>(null);
   const [treeRefreshToken, setTreeRefreshToken] = useState(0);
 
@@ -300,26 +304,36 @@ const CodingView: React.FC = () => {
           setDisplayAgentStatus(true);
           setAgentStatusText(p.statusText);
           setAgentStatusType("AI_PLANNING");
+          setAgentRunning(true);
+          setAgentStepInfo(p.statusText || '规划中');
           break;
         case "AI_THINKING":
           setDisplayAgentStatus(true);
           setAgentStatusText(p.statusText);
           setAgentStatusType("AI_THINKING");
+          setAgentRunning(true);
+          setAgentStepInfo(p.statusText || '思考中');
           break;
         case "AI_EXECUTING":
           setDisplayAgentStatus(true);
           setAgentStatusText(p.statusText);
           setAgentStatusType("AI_EXECUTING");
+          setAgentRunning(true);
+          setAgentStepInfo(p.statusText || '执行中');
           break;
         case "AI_OBSERVING":
           setDisplayAgentStatus(true);
           setAgentStatusText(p.statusText);
           setAgentStatusType("AI_OBSERVING");
+          setAgentRunning(true);
+          setAgentStepInfo(p.statusText || '观察中');
           break;
         case "AI_DONE":
           setDisplayAgentStatus(false);
           setAgentStatusText("");
           setAgentStatusType(undefined);
+          setAgentRunning(false);
+          setAgentStepInfo('');
           loadMessages().catch(() => undefined);
           refreshTask().catch(() => undefined);
           break;
@@ -828,9 +842,33 @@ const CodingView: React.FC = () => {
               <Text strong className="text-sm">
                 Agent 对话
               </Text>
-              <Text type="secondary" className="text-xs block truncate">
-                直接对话 · 技术栈自动识别 · 可用 @文件 引用
-              </Text>
+              <div className="flex items-center justify-between gap-2">
+                <Text type="secondary" className="text-xs truncate">
+                  直接对话 · 技术栈自动识别 · 可用 @文件 引用
+                </Text>
+                <div className="flex items-center gap-2 shrink-0">
+                  {agentRunning && (
+                    <Tag color="processing" className="text-xs m-0">
+                      ⚡ {agentStepInfo || "运行中"}
+                    </Tag>
+                  )}
+                  <Tag className="text-xs cursor-pointer m-0" color={permMode === "auto" ? "success" : "default"}
+                    onClick={async () => {
+                      const next = permMode === "ask" ? "auto" : "ask";
+                      try {
+                        await fetch("http://localhost:8080/api/mcp/permission/mode", {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ mode: next }),
+                        });
+                        setPermMode(next);
+                      } catch (e) { console.error(e); setPermMode(next); }
+                    }}
+                  >
+                    {permMode === "auto" ? "⚡ 自动" : "🔒 询问"}
+                  </Tag>
+                </div>
+              </div>
             </div>
             {/* <CodingSubtaskPanel
               sessionId={sessionId}

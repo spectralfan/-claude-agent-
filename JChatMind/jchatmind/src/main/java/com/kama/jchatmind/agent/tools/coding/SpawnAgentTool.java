@@ -58,11 +58,11 @@ public class SpawnAgentTool implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(
             name = "spawn_agent",
-            description = "创建子智能体执行独立子任务并返回完整结果。"
+            description = "Spawn an isolated sub-agent for a self-contained sub-task. The sub-agent starts with a clean context."
                     + "子 Agent 以干净的上下文启动（仅含 prompt），不继承当前对话历史。"
                     + "子 Agent 完整运行结束后，其最终输出会作为本工具的返回值回到你的上下文中。"
                     + "参数：prompt - 子任务的目标说明（必填），description - 简短描述（可选），"
-                    + "subagent_type - 子智能体类型: planner(规划)/executor(执行,默认)/reviewer(审查)，"
+                    + "subagent_type - 子智能体类型（可选，默认通用执行），"
                     + "run_in_background - 是否后台并行执行（默认false），后台模式返回 run_id，"
                     + "之后用 agent_result(run_id) 获取结果"
     )

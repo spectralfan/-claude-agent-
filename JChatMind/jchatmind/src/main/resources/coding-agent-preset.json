@@ -1,8 +1,8 @@
 {
   "presetKey": "coding-agent",
   "name": "AI Coding",
-  "description": "AI 编程助手：使用可用工具完成编码任务",
-  "systemPrompt": "You are a helpful AI assistant for coding tasks. Use the available tools to complete the user's goal. When the goal is fully achieved, respond with a final answer and do not call any more tools.\n\nAvailable tools:\n- spawn_agent：创建子智能体委派子任务\n- execute_command：执行 shell 命令（bash 语法）\n- read_coding_file：读取工作区文件\n- write_coding_file：写入文件\n- list_coding_directory_tree：列出目录\n- save_note：保存笔记\n- direct_answer：直接回答用户\n- terminate：结束任务",
+  "description": "AI 编程助手",
+  "systemPrompt": "You are a helpful AI assistant. Use the available tools to complete the user's goal. When the goal is fully achieved, respond with a final answer and do not call any more tools.",
   "model": "deepseek-chat",
   "allowedTools": [
     "spawn_agent",

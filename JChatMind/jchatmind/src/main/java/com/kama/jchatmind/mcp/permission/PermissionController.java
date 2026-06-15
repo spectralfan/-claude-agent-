@@ -18,6 +18,17 @@ public class PermissionController {
         this.permissionManager = permissionManager;
     }
 
+    @GetMapping("/mode")
+    public Map<String, Object> getMode() {
+        return Map.of("mode", permissionManager.getMode());
+    }
+
+    @PutMapping("/mode")
+    public Map<String, Object> setMode(@RequestBody Map<String, String> body) {
+        String mode = body.get("mode");
+        permissionManager.setMode(mode);
+        return Map.of("ok", true, "mode", permissionManager.getMode());
+    }
     @PostMapping("/respond")
     public Map<String, Object> respond(@RequestBody Map<String, String> body) {
         String toolUseId = body.get("toolUseId");

@@ -27,7 +27,8 @@
 - rainstorming → 设计文档到 docs/superpowers/specs/
 - writing-plans → 计划到 docs/superpowers/plans/
 - TDD 红-绿-重构循环 → 测试代码 + 实现代码
-- erification-before-completion → 逐项确认
+- 
+erification-before-completion → 逐项确认
 - low-review → 规格合规 + 代码质量双审查
 
 **3. OpenSpec 收尾：**
@@ -79,13 +80,12 @@ pwsh scripts/e2e/coding-tank-game-e2e.ps1  # E2E
 
 ## Architecture
 
-`
-用户请求 -> Scheduler(拆解DAG) -> Worker(并行编码) -> Reviewer(审查) -> 完成
-`
+每次进行开发前可参考架构文件file:///Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmindc/main/out/architecture.md
+在更新后需要更新架构文件file:///Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmindc/main/out/architecture.md
 
 | 模块 | 包路径 | 职责 |
 |------|--------|------|
-| Agent | gent/ | JChatMind, Factory, Profile YAML, 17+ Tools |
+| Agent |  gent/ | JChatMind, Factory, Profile YAML, 17+ Tools |
 | Coding | coding/ | DAG调度, 任务执行, 续跑, 审批, 验证 |
 | Session | session/ | ThreadStore/NoteStore, EventBus, AgentLoop, SessionManager |
 | Memory | memory/ | RAG (Ollama bge-m3 + PgVector) |
@@ -97,7 +97,7 @@ pwsh scripts/e2e/coding-tank-game-e2e.ps1  # E2E
 - **TDD**: 先写测试再实现，红-绿-重构
 - **中文**: 文档/commit/注释用中文，代码标识符用英文
 - **设计先行**: 大功能先出 docs/superpowers/specs/
-- **Agent Profile**: 角色定义在 gent-profiles/*.yaml
+- **Agent Profile**: 角色定义在  gent-profiles/*.yaml
 - **Session 类型**: 按 Agent 工具自动检测 CHAT/CODING
 - **Shell 执行**: 规范名 ash
 - **Graphify + Codegraph**: 架构查询双引擎

@@ -7,7 +7,5 @@ public interface CodingPromptComposer {
 
     String composeSystemPrompt(String basePrompt, String taskSessionId, AgentDTO agentConfig);
 
-    String composeForTask(CodingTask task, String basePrompt, AgentDTO agentConfig);
-
-    /** 子 Agent 角色 Prompt：不含父 chat 历史，仅角色模板 + goal + constraints + contextFiles */
+    String composeForTask(CodingTask task, String basePrompt);
 }
