@@ -130,20 +130,10 @@ coding:
     preview-port: 5500
     # 网页下拉可选的本地 IDEA/Maven 工程（path 指向含 pom.xml 的工程根）
     allowed-roots:
-      - name: 项目根 Workspace
-        path: Z:/JAVA_workshop/JChatMindv2/workspace
-      - name: JChatMind 后端
-        path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind
-      - name: Snake E2E 测试
-        path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/workspace/snake-e2e
-      - name: Python uv E2E
-        path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/workspace/python-uv-e2e
-      - name: 跳跳乐 MCP E2E
-        path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/workspace/jump-game-e2e
-      - name: test workspace
-        path: Z:\JAVA_workshop\JChatMindv2\JChatMind\jchatmind\workspace\test-workspace
-      # - name: 我的业务项目
-      #   path: D:/projects/order-service
+      - name: JChatMindv2 项目根
+        path: Z:/JAVA_workshop/JChatMindv2
+      - name: jchatmind 工作区
+        path: Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmind/workspace
   agent:
     max-loop-steps: 100
     memory-window: 80

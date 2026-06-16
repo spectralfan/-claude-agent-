@@ -13,6 +13,11 @@ import com.kama.jchatmind.memory.integration.MemoryIntegration;
 import com.kama.jchatmind.event.ChatEvent;
 import com.kama.jchatmind.message.SseMessage;
 import com.kama.jchatmind.realtime.RealtimeNotifier;
+import com.kama.jchatmind.session.event.EventBus;
+import com.kama.jchatmind.session.event.EventWriter;
+import com.kama.jchatmind.session.SessionRunIdGenerator;
+import com.kama.jchatmind.session.config.SessionProperties;
+import java.nio.file.Path;
 import lombok.AllArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
@@ -29,6 +34,8 @@ public class ChatEventListener {
     private final CodingMessageEnricher codingMessageEnricher;
     private final MemoryIntegration memoryIntegration;
     private final RealtimeNotifier realtimeNotifier;
+    private final EventBus eventBus;
+    private final SessionProperties sessionProperties;
 
     @Async
     @EventListener
@@ -64,7 +71,17 @@ public class ChatEventListener {
             }
             JChatMind jChatMind = jChatMindFactory.create(
                     event.getAgentId(), event.getSessionId(), enrichedInput);
-            jChatMind.run();
+            String runId = SessionRunIdGenerator.newRunId();
+            jChatMind.setRunId(runId);
+            Path eventsFile = Path.of(sessionProperties.getStoreRoot(), "runs", runId, "events.jsonl");
+            EventWriter eventWriter = new EventWriter(eventsFile);
+            eventBus.subscribe(eventWriter);
+            try {
+                jChatMind.run();
+            } finally {
+                eventBus.unsubscribe(eventWriter);
+                eventWriter.close();
+            }
         } finally {
             memoryIntegration.onSessionEnd(event.getSessionId());
             CodingSessionContext.clear();

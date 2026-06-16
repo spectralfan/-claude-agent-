@@ -39,7 +39,7 @@ public class CodingPromptComposerImpl implements CodingPromptComposer {
     private String buildTaskContextBlock(CodingTask task) {
         return """
 
-                ## Coding Task Context
+                ## 当前工作区 — 你已经在这个目录里了
                 - taskId: %s
                 - workspace root: %s
                 - workspace path: %s

@@ -2,6 +2,8 @@ package com.kama.jchatmind.agent;
 
 import com.kama.jchatmind.converter.ChatMessageConverter;
 import com.kama.jchatmind.session.event.EventBus;
+import com.kama.jchatmind.session.event.RunStartedEvent;
+import com.kama.jchatmind.session.event.RunFinishedEvent;
 import com.kama.jchatmind.message.SseMessage;
 import com.kama.jchatmind.model.dto.ChatMessageDTO;
 import com.kama.jchatmind.model.dto.KnowledgeBaseDTO;
@@ -56,6 +58,9 @@ public class JChatMind {
     // 状态
     private AgentState agentState;
 
+    /** 当前 run 的唯一标识 */
+    private String runId;
+
     // 可用的工具
     private List<ToolCallback> availableTools;
 
@@ -86,6 +91,8 @@ public class JChatMind {
 
     // 实时事件发布（local SSE 或 RocketMQ→SSE）
     private ChatEventPublisher chatEventPublisher;
+
+    private EventBus eventBus;
 
     private ChatMessageConverter chatMessageConverter;
 
@@ -128,6 +135,7 @@ public class JChatMind {
 
         this.chatSessionId = chatSessionId;
         this.chatEventPublisher = chatEventPublisher;
+        this.eventBus = eventBus;
 
         this.chatMessageFacadeService = chatMessageFacadeService;
         this.chatMessageConverter = chatMessageConverter;
@@ -614,6 +622,8 @@ public class JChatMind {
         this.availableTools.removeIf(tc -> tc.getToolDefinition().name().equals(toolName));
     }
 
+    public void setRunId(String runId) { this.runId = runId; }
+
     public void setMaxSteps(int maxSteps) {
         if (maxSteps > 0) {
             this.maxSteps = maxSteps;
@@ -639,6 +649,9 @@ public class JChatMind {
 
         try {
             log.info("═════ Agent 启动: name={}, sessionId={} ═════", name, chatSessionId);
+            if (runId != null && eventBus != null) {
+                eventBus.publish(new RunStartedEvent(runId, name, java.time.Instant.now().toString()));
+            }
             this.agentState = AgentState.PLANNING;
             emitAgentPhase(SseMessage.Type.AI_PLANNING, "分析任务并规划执行步骤");
 
@@ -656,6 +669,12 @@ public class JChatMind {
             throw new RuntimeException(formatAgentFailureMessage(e), e);
         } finally {
             log.info("═════ Agent 结束: name={}, sessionId={}, state={} ═════", name, chatSessionId, agentState);
+            if (runId != null && eventBus != null) {
+                eventBus.publish(new RunFinishedEvent(runId,
+                        agentState == AgentState.ERROR ? "failed" : "success",
+                        agentState == AgentState.ERROR ? "error" : null, 0,
+                        java.time.Instant.now().toString()));
+            }
             emitAgentPhase(SseMessage.Type.AI_DONE,
                     agentState == AgentState.ERROR ? "执行出错" : "处理完成");
         }

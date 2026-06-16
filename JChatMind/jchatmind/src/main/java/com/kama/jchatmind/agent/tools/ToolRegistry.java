@@ -1,6 +1,7 @@
 package com.kama.jchatmind.agent.tools;
 
 import com.kama.jchatmind.agent.profile.AgentProfile;
+import com.kama.jchatmind.coding.bridge.PermissionAwareToolCallback;
 import com.kama.jchatmind.mcp.integration.McpIntegration;
 import com.kama.jchatmind.model.dto.AgentDTO;
 import com.kama.jchatmind.service.ToolFacadeService;
@@ -25,15 +26,21 @@ public class ToolRegistry {
     private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
     private static final String KNOWLEDGE_TOOL_NAME = "KnowledgeTool";
 
+    private final com.kama.jchatmind.mcp.permission.PermissionManager pm;
+
+
     private final ToolFacadeService toolFacadeService;
     private final McpIntegration mcpIntegration;
     private final com.kama.jchatmind.coding.service.CodingTaskService codingTaskService;
 
     public ToolRegistry(ToolFacadeService tfs, McpIntegration mcp,
-                        com.kama.jchatmind.coding.service.CodingTaskService cts) {
+                        com.kama.jchatmind.coding.service.CodingTaskService cts,
+                        com.kama.jchatmind.mcp.permission.PermissionManager pm) {
+
         this.toolFacadeService = tfs;
         this.mcpIntegration = mcp;
         this.codingTaskService = cts;
+        this.pm = pm;
     }
 
     /** Build tool callbacks for a session (main agent or DB sub-agent). */
@@ -70,14 +77,7 @@ public class ToolRegistry {
             }
         }
         List<ToolCallback> cbs = toCallbacks(selected);
-        List<String> mcpAllowed = pt != null ? new ArrayList<>(pt) : new ArrayList<>();
-        String pname = profile.getName();
-        if ("worker".equals(pname) || "executor".equals(pname)) {
-            for (String term : java.util.Set.of("execute_command")) {
-                if (!mcpAllowed.contains(term)) mcpAllowed.add(term);
-            }
-        }
-        injectMcp(cbs, mcpAllowed, true);
+        injectMcp(cbs, pt, true);
         return cbs;
     }
 
@@ -87,6 +87,9 @@ public class ToolRegistry {
             Object target = AopUtils.isAopProxy(t) ? AopUtils.getTargetClass(t) : t;
             for (ToolCallback cb : MethodToolCallbackProvider.builder()
                     .toolObjects(target).build().getToolCallbacks()) {
+                if (pm != null && !"direct_answer".equals(cb.getToolDefinition().name())) {
+                    cb = new PermissionAwareToolCallback(cb, pm);
+                }
                 r.add(cb);
             }
         }
@@ -102,11 +105,6 @@ public class ToolRegistry {
             for (ToolCallback cb : mcpIntegration.getToolsForAgent(filter)) {
                 if (names.add(cb.getToolDefinition().name())) merged.add(cb);
             }
-            if (hasTask) {
-                for (ToolCallback cb : mcpIntegration.getShellToolCallbacks()) {
-                    if (names.add(cb.getToolDefinition().name())) merged.add(cb);
-                }
-            }
             target.addAll(merged);
         } catch (Exception e) {
             log.warn("MCP inject failed: {}", e.getMessage());
@@ -117,7 +115,6 @@ public class ToolRegistry {
         return name != null && (name.startsWith("read_coding") || name.startsWith("write_coding") || name.startsWith("list_coding") || name.contains("coding_search") || name.contains("coding_verify") || name.contains("orchestration_")
                 || name.equals("mark_coding_complete") || name.equals("delegate_coding_task")
                 || name.equals("bash") || name.equals("run_terminal_cmd") || name.equals("maven_command")
-                || name.equals("shell") || name.equals("shell_exec") || name.equals("shell_execute")
-                || name.equals("execute_command"));
+                || name.equals("shell") || name.equals("shell_exec") || name.equals("shell_execute"));
     }
 }

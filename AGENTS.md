@@ -1,6 +1,5 @@
 # JChatMindv2 — AI 编程 Agent 平台
 
-> 基于 Scheduler-Worker-Reviewer 三层编排的智能编码辅助系统。
 
 ## 强制开发规范（每次会话自动生效）
 
@@ -100,7 +99,7 @@ pwsh scripts/e2e/coding-tank-game-e2e.ps1  # E2E
 4. **STDIO 直连 MCP** — 删除 SSE Proxy，子进程直连 Spring AI
 5. **WebSocket 事件流** — 全部 Agent 状态变化实时推送到前端
 
-> **注意**：每次涉及模块增删或架构调整的开发后，需同步更新 `JChatMind/jchatmind/src/main/out/architecture.md` 和本文 Architecture 部分，并运行 `graphify update .` 刷新图谱。
+> **注意**：每次涉及模块增删或架构调整的开发任务后，需同步更新 `JChatMind/jchatmind/src/main/out/architecture.md` 和本文 Architecture 部分，并运行 `graphify update .` 刷新图谱。
 
 ## Conventions
 

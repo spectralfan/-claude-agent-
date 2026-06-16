@@ -558,9 +558,19 @@ public class JChatMindFactory {
                 .chatOptions("{}")
                 .build();
 
+        String enrichedPrompt = profile.getSystemPrompt() != null ? profile.getSystemPrompt() : goal;
+        if ("worker".equals(profile.getName()) && parentSessionId != null) {
+            CodingTask parentTask2 = codingTaskService.getActiveTask(parentSessionId);
+            if (parentTask2 != null && parentTask2.getWorkspaceRoot() != null) {
+                String wsFull2 = parentTask2.getWorkspaceRoot() + "/"
+                        + (parentTask2.getWorkspacePath() != null ? parentTask2.getWorkspacePath() : ".");
+                enrichedPrompt += "\\n\\n## Current Workspace\\n- Your cwd is: " + wsFull2
+                        + "\\n- Relative paths (e.g. ./snake.html) write directly here. ";
+            }
+        }
         JChatMind jChatMind = buildAgentRuntimeWithCustomSystem(
                 agent,
-                profile.getSystemPrompt() != null ? profile.getSystemPrompt() : goal,
+                enrichedPrompt,
                 memory, knowledgeBases, toolCallbacks, subSessionId, parentSessionId, true);
         jChatMind.setEventSessionId(parentSessionId);
         jChatMind.setMaxSteps(profile.getMaxSteps() > 0 ? profile.getMaxSteps() : 35);

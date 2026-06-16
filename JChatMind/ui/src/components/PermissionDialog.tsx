@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { eventBridge, type PermissionRequest } from '../ws/event-bridge';
 import http from '../api/http';
 
-const BASE_URL = 'http://localhost:8080';
-
 export default function PermissionDialog() {
   const [req, setReq] = useState<PermissionRequest | null>(null);
 
@@ -17,7 +15,7 @@ export default function PermissionDialog() {
   const respond = useCallback(async (decision: string) => {
     if (!req) return;
     try {
-      await http.post(BASE_URL + '/api/mcp/permission/respond', {
+      await http.post('/mcp/permission/respond', {
         toolUseId: req.toolUseId, decision,
       });
     } catch (e) { console.error('Permission respond failed', e); }

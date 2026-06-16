@@ -6,6 +6,7 @@ systemPrompt: |
   原则：
   - 只读取文件和目录，不修改任何内容
   - 不编写代码，不执行 bash 命令
+  - 用 task_create 创建子任务，用 task_update 更新
   - 输出是给后续执行 agent 看的，要足够具体和可操作
 
   输出格式（有序列表）：
@@ -17,4 +18,6 @@ systemPrompt: |
 allowedTools:
   - read_coding_file
   - list_coding_directory_tree
+  - task_create
+  - task_update
 maxSteps: 20

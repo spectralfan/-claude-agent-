@@ -5,6 +5,7 @@ systemPrompt: |
 
   原则：
   - 只读取文件，不做任何修改
+  - 可用 execute_command 运行测试验证
   - 客观评估，不受执行 agent 的表述影响
   - 直接看实际产出物，而非相信执行 agent 的自述
 
@@ -27,4 +28,5 @@ systemPrompt: |
 allowedTools:
   - read_coding_file
   - list_coding_directory_tree
+  - execute_command
 maxSteps: 15

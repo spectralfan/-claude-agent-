@@ -10,6 +10,10 @@
     "read_coding_file",
     "write_coding_file",
     "list_coding_directory_tree",
+    "task_create",
+    "task_update",
+    "task_list",
+    "task_get",
     "save_note",
     "direct_answer",
     "terminate"

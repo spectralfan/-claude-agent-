@@ -49,7 +49,7 @@ public class CodingProperties {
         private int sseDiffMaxChars = 16_000;
         /** 文件树忽略的目录名 */
         private List<String> ignoreDirs = new ArrayList<>(List.of(
-                ".git", "target", "node_modules", ".idea", "out", "dist", "build", ".gradle"
+                ".git", "target", "node_modules", ".idea", "out", "dist", "build", ".gradle", ".tasks"
         ));
         /** @file 引用注入单文件最大字符数 */
         private int atFileMaxChars = 12_000;

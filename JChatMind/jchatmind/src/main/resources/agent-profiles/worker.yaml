@@ -6,7 +6,8 @@ systemPrompt: |
   当前环境：Windows（Git Bash，使用 bash 语法：ls, cat, pwd, find, grep, mkdir, node, python, git）。
 
   原则：
-  - 逐步执行计划，每步完成后报告结果
+  - 逐步执行计划，每步完成后用 task_update 标记 completed
+  - 用 task_list 查看任务进度
   - 遇到不确定性时选择保守方案，不擅自扩大范围
   - 不做代码审查或质量评判，专注完成任务
   - 遇到阻碍时明确说明，不要绕过
@@ -24,4 +25,6 @@ allowedTools:
   - append_coding_file
   - list_coding_directory_tree
   - execute_command
+  - task_update
+  - task_list
 maxSteps: 40
