@@ -24,12 +24,11 @@
 - 快速生成：/opsx:ff <name>
 
 **2. Superpowers 执行阶段：**
-- rainstorming → 设计文档到 docs/superpowers/specs/
+- brainstorming → 设计文档到 docs/superpowers/specs/
 - writing-plans → 计划到 docs/superpowers/plans/
 - TDD 红-绿-重构循环 → 测试代码 + 实现代码
-- 
-erification-before-completion → 逐项确认
-- low-review → 规格合规 + 代码质量双审查
+- verification-before-completion → 逐项确认
+- requesting-code-review → 代码审查
 
 **3. OpenSpec 收尾：**
 - /opsx:verify → 验证报告
@@ -62,7 +61,7 @@ erification-before-completion → 逐项确认
 
 ## Commands
 
-`ash
+```bash
 # 后端
 cd JChatMind/jchatmind && ./mvnw spring-boot:run  # :8080
 cd JChatMind/jchatmind && ./mvnw compile           # 编译
@@ -74,23 +73,34 @@ cd JChatMind/ui && npm run build   # 构建
 
 # 外部依赖
 docker run -d --name postgres -e POSTGRES_PASSWORD=123456 -p 5432:5432 postgres:16
-npx mcp-proxy --port 3000          # MCP proxy
 pwsh scripts/e2e/coding-tank-game-e2e.ps1  # E2E
-`
+```
 
 ## Architecture
 
-每次进行开发前可参考架构文件file:///Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmindc/main/out/architecture.md
-在更新后需要更新架构文件file:///Z:/JAVA_workshop/JChatMindv2/JChatMind/jchatmindc/main/out/architecture.md
+> 详细架构见 `JChatMind/jchatmind/src/main/out/architecture.md` · Graphify 报告见 `graphify-out/GRAPH_REPORT.md`
 
 | 模块 | 包路径 | 职责 |
 |------|--------|------|
-| Agent |  gent/ | JChatMind, Factory, Profile YAML, 17+ Tools |
-| Coding | coding/ | DAG调度, 任务执行, 续跑, 审批, 验证 |
-| Session | session/ | ThreadStore/NoteStore, EventBus, AgentLoop, SessionManager |
-| Memory | memory/ | RAG (Ollama bge-m3 + PgVector) |
-| MCP | mcp/ | 别名注册, 命令策略, 集成 |
-| UI | ui/ | 普通对话 / AI Coding / 知识库三路由 |
+| Agent | `agent/` | JChatMind 运行时（reason→act→observe 循环）, Factory 组装, Profile YAML 角色定义, 17+ 工具（spawn_agent/write_file/read_file/list_dir/bash/knowledge_search 等） |
+| Coding | `coding/` | 编码任务管理, 工作区隔离, Prompt 组装, 技术栈配置（stack-skills）, 审批模式（ask/auto）, SubAgentExecutor 子代理引擎 |
+| Session | `session/` | SessionManager（CHAT/CODING）, ThreadStore/NoteStore/MetaStore, EventBus 内存总线, AgentLoop 独立循环 |
+| Event | `session/event/` + `rpc/` | WebSocket 事件流（run/step/tool/subagent/permission/llm/compact）, RpcEventBridge 推送, JsonRpcDispatcher 路由 |
+| MCP | `mcp/` | STDIO 直连 MCP 客户端（纯 bash 执行，64KB 截断，120s 超时）, McpShellCommandPolicy 安全策略, PermissionManager（ask/auto 双模式） |
+| Memory | `memory/` | RAG 检索（Ollama bge-m3 + PgVector）, MemoryAgent 会话结束整理, 三段记忆（工作/近期/归档） |
+| UI | `ui/` | CodingView 编码主界面, AgentChatHistory（含子 Agent 进度）, PermissionDialog 审批弹窗, WebSocket 事件桥接 |
+
+### 核心抽象（Top 10 God Nodes · Graphify）
+`JChatMind`(42 edges) · `JChatMindFactory`(36) · `CodingWorkspaceService`(35) · `MemoryService`(22) · `ExecutionContext`(22) · `SessionMeta`(22) · `AgentProfile` · `EventBus` · `PermissionManager` · `AgentLoop`
+
+### 关键设计决策
+1. **纯 bash MCP** — 放弃 PowerShell，Git Bash 执行
+2. **Profile 驱动 Agent** — planner/worker/reviewer 由 `agent-profiles/*.yaml` 配置
+3. **无强制工作流** — Agent 自主决策工具使用，不强制 planner→executor→reviewer 流程
+4. **STDIO 直连 MCP** — 删除 SSE Proxy，子进程直连 Spring AI
+5. **WebSocket 事件流** — 全部 Agent 状态变化实时推送到前端
+
+> **注意**：每次涉及模块增删或架构调整的开发后，需同步更新 `JChatMind/jchatmind/src/main/out/architecture.md` 和本文 Architecture 部分，并运行 `graphify update .` 刷新图谱。
 
 ## Conventions
 
@@ -99,7 +109,7 @@ pwsh scripts/e2e/coding-tank-game-e2e.ps1  # E2E
 - **设计先行**: 大功能先出 docs/superpowers/specs/
 - **Agent Profile**: 角色定义在  gent-profiles/*.yaml
 - **Session 类型**: 按 Agent 工具自动检测 CHAT/CODING
-- **Shell 执行**: 规范名 ash
+- **Shell 执行**: 规范名 bash
 - **Graphify + Codegraph**: 架构查询双引擎
 
 ## Notes

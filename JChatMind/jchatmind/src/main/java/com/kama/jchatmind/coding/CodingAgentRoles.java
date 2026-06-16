@@ -21,7 +21,7 @@ public class CodingAgentRoles {
     private static final String DELEGATE_TOOL = "delegate_coding_task";
     private static final String CODING_SUBTASK_TOOLS = "coding_subtask_tools";
 
-    public enum AgentRole { SCHEDULER, WORKER, REVIEWER, UNKNOWN }
+    public enum AgentRole { WORKER, REVIEWER, UNKNOWN }
 
     private static AgentProfileService profileService;
     private final AgentProfileService injectedProfileService;
@@ -34,20 +34,15 @@ public class CodingAgentRoles {
     void init() { profileService = this.injectedProfileService; }
 
     public static AgentRole resolveRole(AgentDTO agent) {
-        if (isScheduler(agent)) return AgentRole.SCHEDULER;
         if (isReviewer(agent)) return AgentRole.REVIEWER;
         if (isWorker(agent)) return AgentRole.WORKER;
         return AgentRole.UNKNOWN;
     }
 
-    public static boolean isScheduler(AgentDTO agent) {
-        return hasTool(agent, ORCHESTRATION_TASK_TOOLS);
-    }
 
     /** 兼容旧版 orchestrator 检测（delegate_coding_task + 无写文件工具） */
     public static boolean isOrchestrator(AgentDTO agent) {
         if (agent == null) return false;
-        if (isScheduler(agent)) return true;
         List<String> tools = agent.getAllowedTools();
         if (tools == null || tools.isEmpty()) return false;
         return tools.contains(DELEGATE_TOOL)
@@ -84,7 +79,6 @@ public class CodingAgentRoles {
     public static String getSystemPromptForRole(AgentRole role) {
         if (profileService == null) return "";
         AgentProfile profile = switch (role) {
-            case SCHEDULER -> profileService.getSchedulerProfile();
             case WORKER -> profileService.getWorkerProfile();
             case REVIEWER -> profileService.getReviewerProfile();
             default -> null;
@@ -95,7 +89,6 @@ public class CodingAgentRoles {
     public static int getMaxStepsForRole(AgentRole role) {
         if (profileService == null) return 35;
         AgentProfile profile = switch (role) {
-            case SCHEDULER -> profileService.getSchedulerProfile();
             case WORKER -> profileService.getWorkerProfile();
             case REVIEWER -> profileService.getReviewerProfile();
             default -> null;
@@ -106,7 +99,6 @@ public class CodingAgentRoles {
     private static Set<String> getAllowedToolsForRole(AgentRole role) {
         if (profileService == null) return null;
         AgentProfile profile = switch (role) {
-            case SCHEDULER -> profileService.getSchedulerProfile();
             case WORKER -> profileService.getWorkerProfile();
             case REVIEWER -> profileService.getReviewerProfile();
             default -> null;
@@ -118,11 +110,6 @@ public class CodingAgentRoles {
     /** 回退：profileService 不可用时（如测试环境）使用硬编码黑名单 */
     private static List<Tool> filterByFallbackBlocklist(List<Tool> tools, AgentRole role) {
         Set<String> blocked = switch (role) {
-            case SCHEDULER -> Set.of(
-                    DELEGATE_TOOL, CODING_SUBTASK_TOOLS, CODING_FILE_TOOLS,
-                    "coding_search_tools", "coding_verify_tools",
-                    "orchestration_shell_tools", "maven_command", MARK_COMPLETE
-            );
             case WORKER -> Set.of(
                     DELEGATE_TOOL, CODING_SUBTASK_TOOLS, ORCHESTRATION_TASK_TOOLS, ORCHESTRATION_READ_TOOLS
             );

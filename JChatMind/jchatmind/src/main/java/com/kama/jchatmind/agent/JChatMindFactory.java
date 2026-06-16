@@ -424,7 +424,6 @@ public class JChatMindFactory {
                 chatMessageConverter,
                 bridgeForResolver
         );
-        jChatMind.setSchedulerMode(CodingAgentRoles.isOrchestrator(agentConfig));
         return jChatMind;
     }
 

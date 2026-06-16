@@ -19,10 +19,6 @@ public class AgentProfileService {
         return Optional.ofNullable(loader.getProfile(name));
     }
 
-    public AgentProfile getSchedulerProfile() {
-        return loader.getProfile("scheduler");
-    }
-
     public AgentProfile getWorkerProfile() {
         return loader.getProfile("worker");
     }

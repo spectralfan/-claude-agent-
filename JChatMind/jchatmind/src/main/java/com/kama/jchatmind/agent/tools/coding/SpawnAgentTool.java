@@ -72,11 +72,6 @@ public class SpawnAgentTool implements Tool {
         if (prompt == null || prompt.isBlank()) {
             return "错误：prompt 不能为空";
         }
-        // 子 Agent 不能再 spawn 子 Agent（深度限制 1 层）
-        if (SubAgentRunContext.get() != null) {
-            return "错误：子 Agent 不能继续创建子 Agent（嵌套层级限制）";
-        }
-
         CodingSessionContext.Context ctx = CodingSessionContext.get();
         String parentSessionId = ctx != null ? ctx.sessionId() : null;
         String subSessionId = UUID.randomUUID().toString();
@@ -100,6 +95,10 @@ public class SpawnAgentTool implements Tool {
             AgentProfile profile = profileService.getProfile(type).orElse(null);
             if (profile != null) {
                 subAgent = getFactory().createProfileSubAgent(profile, parentSessionId, subSessionId, prompt);
+                if (SubAgentRunContext.get() != null) {
+                    subAgent.removeTool("spawn_agent");
+                    subAgent.removeTool("agent_result");
+                }
             } else {
                 String agentId = resolveAgentId(type);
                 if (agentId == null) {
@@ -107,6 +106,10 @@ public class SpawnAgentTool implements Tool {
                     return "错误：未找到子智能体类型或 Agent: " + type;
                 }
                 subAgent = getFactory().createSpawnSubAgent(agentId, parentSessionId, subSessionId, prompt);
+                if (SubAgentRunContext.get() != null) {
+                    subAgent.removeTool("spawn_agent");
+                    subAgent.removeTool("agent_result");
+                }
             }
 
             if (bg) {
@@ -163,7 +166,7 @@ public class SpawnAgentTool implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(
             name = "agent_result",
-            description = "查询后台子智能体的执行结果。参数：run_id - spawn_agent 返回的 run_id"
+            description = "Retrieve the result of a background sub-agent previously started with spawn_agent. Returns still-running if the sub-agent has not yet completed. 参数：run_id - spawn_agent 返回的 run_id"
     )
     public String agentResult(String run_id) {
         if (run_id == null || run_id.isBlank()) {

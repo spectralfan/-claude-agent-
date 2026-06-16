@@ -12,7 +12,7 @@
 | 工作区 | Reasonix 全局工作区 |
 | AI 助手 | Reasonix（子代理模式） |
 | 规格框架 | OpenSpec v1.4+ |
-| 执行方法论 | Superpowers（7 步标准工作流） |
+| 执行方法论 | Superpowers（14 个组合式技能） |
 | 语言 | 中文（设计文档、提交信息、注释） |
 | 开发纪律 | TDD 铁律（红-绿-重构循环） |
 
@@ -25,7 +25,7 @@
 | 原则 | 说明 |
 |------|------|
 | **规格先行** | 任何代码变更前必须先有规格说明。OpenSpec 管理规格生命周期。 |
-| **执行纪律** | 实现阶段严格遵循 Superpowers 7 步流程：理解→探索→拆分→计划→实现→验证→提交。 |
+| **执行纪律** | 实现阶段严格遵循 Superpowers 技能工作流：理解→探索→拆分→计划→实现→验证→提交。 |
 | **TDD 铁律** | 先写测试再写实现，红-绿-重构循环。未经测试的代码不存在。 |
 | **小步快走** | 每个任务 2-5 分钟，频繁 commit，一次一个变更。 |
 | **中文优先** | 所有文档和提交信息使用中文，代码标识符使用英文。 |
@@ -114,7 +114,7 @@
 | 8. 子代理驱动开发 | `subagent-driven-development` | 分派子代理逐个执行任务 |
 | 9. 完成前验证 | `verification-before-completion` | 逐项确认任务完成 |
 | 10. 系统调试（如需） | `systematic-debugging` | 问题定位与修复 |
-| 11. 流程审查 | `flow-review` | 规格合规 + 代码质量双审查 |
+| 11. 流程审查 | `requesting-code-review` | 规格合规 + 代码质量双审查 |
 
 **细化说明：**
 
@@ -130,7 +130,7 @@
 **步骤 9-11（验证阶段）：**
 - `verification-before-completion` 确保所有任务完成
 - `systematic-debugging` 仅在测试失败时调用
-- `flow-review` 做两轮审查：规格合规 + 代码质量
+- `requesting-code-review` 派发审查子 agent 检查：规格合规 + 代码质量
 
 > **完成标志**：所有代码已实现，测试通过，任务列表全部 `[x]`。
 
@@ -188,7 +188,7 @@
 | 子代理实现 | `subagent-driven-development` | 分派子代理执行任务 |
 | 系统调试 | `systematic-debugging` | 定位并修复问题 |
 | 完成验证 | `verification-before-completion` | 逐项确认完成 |
-| 流程审查 | `flow-review` | 规格 + 代码双审查 |
+| 流程审查 | `requesting-code-review` | 派发审查子 agent 检查代码质量 |
 | 中文提交 | `chinese-commit-conventions` | 中文 commit 规范 |
 | 中文审查 | `chinese-code-review` | 代码审查标准 |
 | 中文文档 | `chinese-documentation` | 文档编写规范 |
@@ -199,18 +199,18 @@
 
 ### 6.4 OpenSpec 命令索引
 
-| 命令 | 对应 skill | 说明 |
-|------|-----------|------|
-| `openspec init` | `openspec-initial` | 初始化项目 |
-| `/opsx:explore` | `openspec-explore` | 探索想法 |
-| `/opsx:new` | `openspec-new` | 启动新变更 |
-| `/opsx:continue` | `openspec-continue` | 逐个创建制品 |
-| `/opsx:ff` | `openspec-ff` | 快速生成所有规划制品 |
-| `/opsx:apply` | `openspec-apply` | 按任务列表实现 |
-| `/opsx:verify` | `openspec-verify` | 验证实现 |
-| `/opsx:archive` | `openspec-archive` | 归档变更 |
-| `openspec config` | `openspec-config` | 配置管理 |
-| `openspec schema` | `openspec-schema` | 自定义 schema |
+| 命令 | 说明 |
+|------|------|
+| `openspec init` | 初始化项目 |
+| `/opsx:explore` | 探索想法 |
+| `/opsx:new` | 启动新变更 |
+| `/opsx:continue` | 逐个创建制品 |
+| `/opsx:ff` | 快速生成所有规划制品 |
+| `/opsx:apply` | 按任务列表实现 |
+| `/opsx:verify` | 验证实现 |
+| `/opsx:archive` | 归档变更 |
+| `openspec config` | 配置管理 |
+| `openspec schema` | 自定义 schema |
 
 ---
 

@@ -77,9 +77,6 @@ public class JChatMind {
     // 最多循环次数
     private int maxSteps = MAX_STEPS;
 
-    /** Coding Scheduler/Orchestrator：建图后勿 list 轮询 */
-    private boolean schedulerMode;
-
     private static final Integer MAX_STEPS = 20;
 
     private static final Integer DEFAULT_MAX_MESSAGES = 20;
@@ -251,7 +248,7 @@ public class JChatMind {
     // 打印工具调用信息
     private void logToolCalls(List<AssistantMessage.ToolCall> toolCalls) {
         if (toolCalls == null || toolCalls.isEmpty()) {
-            log.info("\n\n[ToolCalling] 无工具调用");
+            log.info("\n\n[{}][ToolCalling] 无工具调用", name);
             return;
         }
         String logMessage = IntStream.range(0, toolCalls.size())
@@ -265,7 +262,7 @@ public class JChatMind {
                     );
                 })
                 .collect(Collectors.joining("\n\n"));
-        log.info("\n\n========== Tool Calling ==========\n{}\n=================================\n", logMessage);
+        log.info("\n\n[{}] ========== Tool Calling ==========\n{}\n=================================\n", name, logMessage);
     }
 
     // 持久化 Message, 返回 chatMessageId
@@ -371,15 +368,7 @@ public class JChatMind {
                 - 你目前拥有的知识库列表以及描述：%s
                 - 如果有缺失的上下文时，优先从知识库中进行搜索
                 """.formatted(this.availableKbs);
-        String schedulerSection = this.schedulerMode
-                ? """
 
-                【Scheduler 调度规则（优先于通用规则）】
-                - 大需求先拆成多个 WORKER：同一轮可多个 create_orchestration_task，无依赖则并行
-                - 全部 create 完成后再用文字告知用户「已委派」并结束本轮；**禁止** list 轮询
-                - 仅在 [系统自动继续] 或用户追问、需处理失败/审查时，才可 list 一次
-                """
-                : "";
         String reasonPrompt =
                 """
                 你处于 Agent「推理 → 工具调用 → 结果观察 → 继续推理」闭环的【推理】阶段。
@@ -388,8 +377,8 @@ public class JChatMind {
                 2. 若仍需信息或操作，调用相应工具；**同一轮可同时返回多个 tool_calls**（如批量读文件+列目录树），独立操作尽量合并到一轮，勿分多轮重复探索
                 3. 可连续多步推理与工具调用，勿中途停下来等用户再发消息
                 4. 若已满足用户的完整请求，直接给出最终回复，不要再调用工具
-                5. 缺少必要信息时优先调用工具获取，不要向用户追问%s%s
-                """.formatted(kbSection, schedulerSection);
+                5. 缺少必要信息时优先调用工具获取，不要向用户追问%s
+                """.formatted(kbSection);
 
         Prompt prompt = Prompt.builder()
                 .chatOptions(this.chatOptions)
@@ -577,7 +566,7 @@ public class JChatMind {
                 .map(resp -> resp.name() + ": " + truncateForStatus(resp.responseData(), 120))
                 .collect(Collectors.joining(" | "));
 
-        log.info("工具观察结果：{}", observationSummary);
+        log.info("[{}] 工具观察结果：{}", name, observationSummary);
         emitAgentPhase(SseMessage.Type.AI_OBSERVING,
                 truncateForStatus(observationSummary, 240));
 
@@ -585,14 +574,7 @@ public class JChatMind {
                 .stream()
                 .anyMatch(resp -> resp.name().equals("terminate"))) {
             this.agentState = AgentState.FINISHED;
-            log.info("任务结束");
-        }
-        if (this.schedulerMode && toolResponseMessage.getResponses().stream().anyMatch(
-                resp -> "list_orchestration_tasks".equals(resp.name())
-                        && resp.responseData() != null
-                        && resp.responseData().contains("禁止重复"))) {
-            this.agentState = AgentState.FINISHED;
-            log.info("Scheduler 重复 list 被拦截，结束本轮");
+            log.info("[{}] 任务结束", name);
         }
     }
 
@@ -626,14 +608,16 @@ public class JChatMind {
         observe(toolResponseMessage);
     }
 
+    
+    /** 从可用工具列表中移除指定名称的工具（用于子 Agent 不暴露 spawn_agent 等） */
+    public void removeTool(String toolName) {
+        this.availableTools.removeIf(tc -> tc.getToolDefinition().name().equals(toolName));
+    }
+
     public void setMaxSteps(int maxSteps) {
         if (maxSteps > 0) {
             this.maxSteps = maxSteps;
         }
-    }
-
-    public void setSchedulerMode(boolean schedulerMode) {
-        this.schedulerMode = schedulerMode;
     }
 
     public String getFinalOutput() {
@@ -654,6 +638,7 @@ public class JChatMind {
         }
 
         try {
+            log.info("═════ Agent 启动: name={}, sessionId={} ═════", name, chatSessionId);
             this.agentState = AgentState.PLANNING;
             emitAgentPhase(SseMessage.Type.AI_PLANNING, "分析任务并规划执行步骤");
 
@@ -670,6 +655,7 @@ public class JChatMind {
             log.error("Error running agent", e);
             throw new RuntimeException(formatAgentFailureMessage(e), e);
         } finally {
+            log.info("═════ Agent 结束: name={}, sessionId={}, state={} ═════", name, chatSessionId, agentState);
             emitAgentPhase(SseMessage.Type.AI_DONE,
                     agentState == AgentState.ERROR ? "执行出错" : "处理完成");
         }
