@@ -81,11 +81,11 @@ pwsh scripts/e2e/coding-tank-game-e2e.ps1  # E2E
 
 | 模块 | 包路径 | 职责 |
 |------|--------|------|
-| Agent | `agent/` | JChatMind 运行时（reason→act→observe 循环）, Factory 组装, Profile YAML 角色定义, 17+ 工具（spawn_agent/write_file/read_file/list_dir/bash/knowledge_search 等） |
-| Coding | `coding/` | 编码任务管理, 工作区隔离, Prompt 组装, 技术栈配置（stack-skills）, 审批模式（ask/auto）, SubAgentExecutor 子代理引擎 |
+| Agent | `agent/` | JChatMind ReAct 运行时, Factory 组装, Profile YAML 角色定义, BashTool 内置执行、任务工具（task_create/update/list/get）、子 Agent 委派等 |
+| Coding | `coding/` | 编码任务管理, 工作区隔离, Prompt 组装, 轻量任务系统（.tasks/ 文件存储）, 技术栈配置, 审批模式, SubAgentExecutor 子代理引擎 |
 | Session | `session/` | SessionManager（CHAT/CODING）, ThreadStore/NoteStore/MetaStore, EventBus 内存总线, AgentLoop 独立循环 |
-| Event | `session/event/` + `rpc/` | WebSocket 事件流（run/step/tool/subagent/permission/llm/compact）, RpcEventBridge 推送, JsonRpcDispatcher 路由 |
-| MCP | `mcp/` | STDIO 直连 MCP 客户端（纯 bash 执行，64KB 截断，120s 超时）, McpShellCommandPolicy 安全策略, PermissionManager（ask/auto 双模式） |
+| Event | `session/event/` + `rpc/` | WebSocket + EventBus 事件流, EventWriter 持久化 events.jsonl, ReplayController 断线回放, RpcEventBridge 推送 |
+| MCP | `mcp/` | STDIO 直连 MCP 客户端, RecordingToolCallback 埋点, PermissionManager（6 层策略评估 + Future 异步审批 + 两级缓存）, PermissionAwareToolCallback 自定义工具权限包装 |
 | Memory | `memory/` | RAG 检索（Ollama bge-m3 + PgVector）, MemoryAgent 会话结束整理, 三段记忆（工作/近期/归档） |
 | UI | `ui/` | CodingView 编码主界面, AgentChatHistory（含子 Agent 进度）, PermissionDialog 审批弹窗, WebSocket 事件桥接 |
 
@@ -93,11 +93,12 @@ pwsh scripts/e2e/coding-tank-game-e2e.ps1  # E2E
 `JChatMind`(42 edges) · `JChatMindFactory`(36) · `CodingWorkspaceService`(35) · `MemoryService`(22) · `ExecutionContext`(22) · `SessionMeta`(22) · `AgentProfile` · `EventBus` · `PermissionManager` · `AgentLoop`
 
 ### 关键设计决策
-1. **纯 bash MCP** — 放弃 PowerShell，Git Bash 执行
+1. **内置 BashTool** — ProcessBuilder 直连，自动识别 coding workspace 工作目录
 2. **Profile 驱动 Agent** — planner/worker/reviewer 由 `agent-profiles/*.yaml` 配置
-3. **无强制工作流** — Agent 自主决策工具使用，不强制 planner→executor→reviewer 流程
+3. **无强制工作流** — Agent 自主决策工具使用，配合轻量任务系统（task_*）追踪子目标进度
+6. **权限审批** — 修改操作用具弹窗审批（ask/auto 双模式），只读/编排类默认放行
 4. **STDIO 直连 MCP** — 删除 SSE Proxy，子进程直连 Spring AI
-5. **WebSocket 事件流** — 全部 Agent 状态变化实时推送到前端
+5. **WebSocket 事件流 + 持久化回放** — Agent 执行过程实时推送 + events.jsonl 持久化 + 断线事件重放
 
 > **注意**：每次涉及模块增删或架构调整的开发任务后，需同步更新 `JChatMind/jchatmind/src/main/out/architecture.md` 和本文 Architecture 部分，并运行 `graphify update .` 刷新图谱。
 
