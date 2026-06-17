@@ -6,7 +6,7 @@
 
 ## 1. 项目概述
 
-JChatMindv2 是一个 AI 编程 Agent 平台，采用 KamaClaude 风格的 plan→act→observe 循环。
+JChatMindv2 是一个 AI 编程 Agent 平台，采用 Reason→Act→Observe (ReAct) 自主循环。
 后端 Java 17 + Spring Boot 3 + Spring AI 1.1 + PostgreSQL 16 + MyBatis。
 前端 React + TypeScript + Vite + Ant Design X。
 MCP 通过 STDIO 直连 Git Bash 执行外壳命令。
@@ -28,7 +28,9 @@ MCP 通过 STDIO 直连 Git Bash 执行外壳命令。
 
 | 工具 | 类 | 说明 |
 |------|-----|------|
-| `spawn_agent` / `agent_result` | `SpawnAgentTool` | 子 Agent 委派（前台阻塞/后台并行），深度限制 1 层 |
+| `spawn_agent` / `agent_result` | `SpawnAgentTool` | 子 Agent 委派（前台阻塞/后台并行），嵌套限制 2 层（子可再 spawn） |
+| `task_create` / `task_update` / `task_list` / `task_get` | `TaskCreateTool` 等 | 轻量任务追踪（pending→in_progress→completed），blocked_by 依赖管理 |
+| `execute_command` | `BashTool` | 内置 shell 执行（ProcessBuilder 直连，自动 workspace cwd） |
 | `write_coding_file` / `append_coding_file` | `WriteFileTool` | 写入/追加文件（工作区边界检查） |
 | `read_coding_file` | `ReadFileTool` | 读取文件 |
 | `read_coding_files` | `BatchReadTool` | 批量读取 |
@@ -49,7 +51,7 @@ MCP 通过 STDIO 直连 Git Bash 执行外壳命令。
 - `planner.yaml` — 规划者（只读）
 - `worker.yaml` — 执行者（读写+执行）
 - `reviewer.yaml` — 审查者（只读）
-- `scheduler.yaml` — 调度者（保留，暂未使用）
+
 
 ### 2.2 MCP 集成 (`mcp/`)
 
@@ -66,7 +68,9 @@ MCP 通过 STDIO 直连 Git Bash 执行外壳命令。
 
 | 类 | 职责 |
 |----|------|
-| `PermissionManager` | ask/auto 双模式，deny→allow→ask 三层策略 |
+| `PermissionManager` | 6 层策略评估（deny→outside_cwd→session cache→persistent→allow→default），Future 异步审批，session+persistent 两级缓存 |
+| `PermissionAwareToolCallback` | 非 MCP 自定义工具权限包装器 |
+| `ToolPolicy` | 每个工具的默认策略 + allow/deny 正则列表 |
 | `PermissionController` | REST API：`GET/PUT /api/mcp/permission/mode`、`POST /api/mcp/permission/respond` |
 
 **MCP Shell Server（`scripts/mcp/jchatmind-shell-mcp.mjs`）：**
@@ -104,10 +108,12 @@ MCP 通过 STDIO 直连 Git Bash 执行外壳命令。
 | `CodingWorkspaceServiceImpl` | 工作区根路径管理、边界安全检查 |
 | `CodingPromptComposerImpl` | 系统 Prompt 组装（仅注入 task 上下文，不加工作流指令） |
 | `CodingSessionContext` | ThreadLocal 绑定的 Session/Agent 上下文 |
-| `SubAgentRunContext` | 子 Agent 运行边界标记（防止嵌套） |
+| `SubAgentRunContext` | 子 Agent 运行边界标记（深度控制：子可再 spawn 孙） |
 | `AgentPresetBootstrapService` | 启动时确保 AI Coding 预设 Agent 存在 |
 | `CodingStackServiceImpl` | 技术栈配置加载（`coding-stacks/*.json`） |
 | `CodingSkillServiceImpl` | 自主开发技能加载（`coding-skills/*.json`） |
+| `AgentTask` / `TaskManager` | 文件系统轻量任务管理（`.tasks/task_*.json`），Agent 自主拆解追踪 |
+| `WorkspaceShellCallback` | 命令自动注入 coding workspace cwd（已废弃，BashTool 内置实现） |
 
 ### 2.5 Session 管理 (`session/`)
 
