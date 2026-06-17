@@ -311,7 +311,6 @@
 | 2026-06-12 | DB 优化：加索引、删14张电商表、统一UUID类型、删除时清理文件 + Session分类 + MCP STDIO直连 + 路由参数修复 | Reasonix |
 | 2026-06-13 | 性能优化：Agent 缓存 + 编码修复 + CHAT/CODING 会话分离 + 工具过滤 | Reasonix |
 | 2026-06-14 | ToolRegistry + Git Bash 执行器 + spawn_agent + 移除编排系统 + 清理死代码 | Reasonix |
-| 2026-06-16 | 架构大规模重构：删除 scheduler agent、添加 BashTool/任务系统/PermissionAwareToolCallback/事件重放、PermissionManager 6 层评估、spawn_agent 深度对齐、workspace 上下文注入 | Reasonix |
 
 
 
