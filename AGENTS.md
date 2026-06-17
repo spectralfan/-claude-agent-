@@ -77,7 +77,7 @@ pwsh scripts/e2e/coding-tank-game-e2e.ps1  # E2E
 
 ## Architecture
 
-> 详细架构见 `JChatMind/jchatmind/src/main/out/architecture.md` · Graphify 报告见 `graphify-out/GRAPH_REPORT.md`
+> 详细架构见 `JChatMind/jchatmind/src/main/out/architecture.md` · Graphify 报告见 `graphify-out/2026-06-17/GRAPH_REPORT.md`
 
 | 模块 | 包路径 | 职责 |
 |------|--------|------|

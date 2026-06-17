@@ -1,6 +1,6 @@
 # JChatMindv2 项目架构文档
 
-> 基于实际代码扫描生成 · 2026-06-15
+> 基于实际代码扫描生成 · 2026-06-17
 
 ---
 
@@ -9,7 +9,7 @@
 JChatMindv2 是一个 AI 编程 Agent 平台，采用 KamaClaude 风格的 plan→act→observe 循环。
 后端 Java 17 + Spring Boot 3 + Spring AI 1.1 + PostgreSQL 16 + MyBatis。
 前端 React + TypeScript + Vite + Ant Design X。
-MCP 通过 STDIO 直连 Git Bash 执行外壳命令。
+内置 BashTool（ProcessBuilder 直连，自动注入 coding workspace cwd），MCP 仅用于扩展工具。
 
 ---
 
